@@ -1,0 +1,26 @@
+{
+  "name": "livestream",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LiveStream — local anime/movie streaming platform",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w server && npm run build -w web",
+    "build:web": "npm run build -w web",
+    "start": "npm run start -w server",
+    "db:migrate": "npm run db:migrate -w server",
+    "db:seed": "npm run db:seed -w server",
+    "db:reset": "npm run db:reset -w server",
+    "demo:encode": "npm run demo:encode -w server",
+    "start:local": "node scripts/start-local.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

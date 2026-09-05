@@ -1,0 +1,120 @@
+/* Fills the preview layer; parent positions size via CSS vars. */
+.hover-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+  box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  pointer-events: auto;
+  animation: hover-preview-in 0.18s ease-out;
+}
+
+@keyframes hover-preview-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hover-preview__media {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+}
+
+.hover-preview__poster,
+.hover-preview__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hover-preview__video {
+  z-index: 1;
+  background: #000;
+}
+
+.hover-preview__media-fade {
+  position: absolute;
+  inset: auto 0 0;
+  height: 55%;
+  z-index: 2;
+  background: linear-gradient(
+    to top,
+    rgba(11, 14, 19, 0.96) 0%,
+    rgba(11, 14, 19, 0.55) 45%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.hover-preview__chrome {
+  position: relative;
+  z-index: 3;
+  padding: 0.5rem 0.65rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.hover-preview__title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hover-preview__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.hover-preview__badges .badge {
+  font-size: 0.62rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.hover-preview__meta {
+  margin: 0;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hover-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.1rem;
+}
+
+.hover-preview__actions .btn-sm {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+@media (max-width: 639px), (hover: none) {
+  .hover-preview {
+    display: none !important;
+  }
+}

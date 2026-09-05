@@ -1,0 +1,13 @@
+.static-page {
+  max-width: 640px;
+}
+
+.static-page p {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.static-form {
+  margin-top: 1.25rem;
+}

@@ -1,0 +1,69 @@
+.watch__player-wrap {
+  margin-bottom: 1.25rem;
+}
+
+.watch__unavailable {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  text-align: center;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  padding: 1.5rem;
+}
+
+.watch__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.watch__series {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.watch__series a:hover {
+  color: var(--accent);
+}
+
+.watch__head h1 {
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+}
+
+.watch__nav {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.watch__eps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.watch__ep {
+  min-width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.watch__ep:hover,
+.watch__ep.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}

@@ -1,0 +1,56 @@
+name: docker-e2e
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create CI env file
+        run: |
+          cp .env.ci .env.production
+          # Base compose expects .env.production; CI overlay injects HTTP Caddy + secrets
+
+      - name: Build and start compose (HTTP CI overlay)
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.ci.yml \
+            --env-file .env.ci \
+            up -d --build
+
+      - name: Wait for proxy healthy
+        run: |
+          set -e
+          for i in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:8080/api/health" >/dev/null; then
+              echo "API healthy via proxy"
+              exit 0
+            fi
+            echo "waiting ($i)..."
+            sleep 5
+          done
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file .env.ci ps
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file .env.ci logs --tail=80
+          exit 1
+
+      - name: Smoke curl health + home + media
+        run: |
+          chmod +x scripts/ci-docker-smoke.sh
+          BASE_URL=http://127.0.0.1:8080 ./scripts/ci-docker-smoke.sh
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.ci.yml \
+            --env-file .env.ci \
+            down -v
