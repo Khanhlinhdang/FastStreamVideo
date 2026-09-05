@@ -1,0 +1,133 @@
+# LiveStream production stack
+# Usage:
+#   cp .env.production.example .env.production
+#   # edit DOMAIN, JWT secrets, admin password
+#   docker compose --env-file .env.production up -d --build
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_PATH: /data/livestream.db
+      MEDIA_ROOT: /media
+      UPLOADS_DIR: /media/uploads
+      HLS_DIR: /media/hls
+      FFMPEG_PATH: ffmpeg
+      FFPROBE_PATH: ffprobe
+      REPO_ROOT: /app
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      ENCODE_IN_PROCESS: ${ENCODE_IN_PROCESS:-1}
+      ENABLE_AV1_LADDER: ${ENABLE_AV1_LADDER:-0}
+      MAX_ENCODE_HEIGHT: ${MAX_ENCODE_HEIGHT:-1080}
+      R2_PUBLISH_MODE: ${R2_PUBLISH_MODE:-off}
+      SIGNED_MEDIA: ${SIGNED_MEDIA:-0}
+    volumes:
+      - livestream_data:/data
+      - livestream_media:/media
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - livestream
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        VITE_API_BASE: ""
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - livestream
+
+  proxy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - livestream_media:/srv:ro
+      # Optional: mount Cloudflare Origin Certificate (see docs/CLOUDFLARE.md)
+      # - ./deploy/certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - livestream
+
+  # Optional encode worker (set ENCODE_IN_PROCESS=0 on api)
+  # Peak watch: keep ENCODE_IN_PROCESS=0 and only run --profile worker off-peak.
+  # See docs/ENCODE_OFFPEAK.md and docs/WORKER_VM.md
+  worker:
+    profiles: ["worker"]
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    command: ["node", "dist/src/worker.js"]
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/livestream.db
+      MEDIA_ROOT: /media
+      UPLOADS_DIR: /media/uploads
+      HLS_DIR: /media/hls
+      FFMPEG_PATH: ffmpeg
+      FFPROBE_PATH: ffprobe
+      REPO_ROOT: /app
+      ENCODE_IN_PROCESS: "1"
+      # Inherit R2_* from env_file so worker can publish after encode
+      R2_PUBLISH_MODE: ${R2_PUBLISH_MODE:-off}
+      MAX_ENCODE_HEIGHT: ${MAX_ENCODE_HEIGHT:-1080}
+      ENABLE_AV1_LADDER: ${ENABLE_AV1_LADDER:-0}
+    volumes:
+      - livestream_data:/data
+      - livestream_media:/media
+    networks:
+      - livestream
+
+volumes:
+  livestream_data:
+  livestream_media:
+  caddy_data:
+  caddy_config:
+
+networks:
+  livestream:
+    driver: bridge

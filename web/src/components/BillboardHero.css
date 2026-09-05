@@ -1,0 +1,122 @@
+.billboard {
+  position: relative;
+  border-radius: calc(var(--radius) + 6px);
+  overflow: hidden;
+  min-height: clamp(320px, 52vh, 560px);
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: flex-end;
+  isolation: isolate;
+}
+
+.billboard--skel {
+  background: var(--bg-elevated);
+}
+
+.billboard__skel-block {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+}
+
+.billboard__bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center top;
+  filter: brightness(0.42) saturate(1.15);
+  transform: scale(1.04);
+  opacity: 0;
+  transition: opacity 0.55s ease;
+  z-index: -1;
+}
+
+.billboard__bg.is-active {
+  opacity: 1;
+}
+
+.billboard__bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--bg) 96%, transparent) 8%,
+    color-mix(in srgb, var(--bg) 35%, transparent) 50%,
+    color-mix(in srgb, var(--bg) 20%, transparent)
+  );
+}
+
+.billboard__content {
+  position: relative;
+  z-index: 1;
+  padding: 2rem 1.5rem 1.75rem;
+  max-width: 640px;
+}
+
+.billboard__eyebrow {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.35rem;
+}
+
+.billboard__kind {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--teal);
+  font-weight: 600;
+}
+
+.billboard__title {
+  font-size: clamp(1.85rem, 4.5vw, 3rem);
+  margin-bottom: 0.5rem;
+}
+
+.billboard__tagline {
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 0.5rem;
+}
+
+.billboard__synopsis {
+  color: var(--text-muted);
+  margin: 0 0 1.15rem;
+  line-height: 1.55;
+}
+
+.billboard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.billboard__dots {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.billboard__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+}
+
+.billboard__dot.is-active {
+  background: var(--accent);
+  width: 1.35rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .billboard__bg {
+    transition: none;
+  }
+}

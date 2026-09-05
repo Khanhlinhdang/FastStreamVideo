@@ -1,0 +1,169 @@
+.series-detail__hero {
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+@media (min-width: 720px) {
+  .series-detail__hero {
+    grid-template-columns: 220px 1fr;
+    align-items: start;
+  }
+}
+
+.series-detail__poster {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  margin-inline: auto;
+}
+
+.series-detail__info h1 {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  margin-bottom: 0.75rem;
+}
+
+.series-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.series-detail__genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.series-detail__synopsis {
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+  max-width: 60ch;
+}
+
+.series-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.episode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.65rem;
+}
+
+.episode-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 0.2s;
+}
+
+.episode-chip:hover {
+  border-color: var(--accent);
+}
+
+.episode-chip__num {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.episode-chip__title {
+  font-size: 0.85rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.episode-chip__encode {
+  font-size: 0.7rem;
+  color: var(--warning);
+}
+
+.series-detail__cinematic {
+  position: relative;
+  background-size: cover;
+  background-position: center top;
+  padding: 3rem 0 2rem;
+  margin-bottom: 1rem;
+  isolation: isolate;
+}
+
+.series-detail__cinematic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 75%, transparent) 45%,
+    color-mix(in srgb, var(--bg) 40%, transparent) 100%
+  );
+  z-index: -1;
+}
+
+.series-detail__kind {
+  color: var(--teal);
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.series-detail__tagline {
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 0.5rem;
+}
+
+.series-detail__cast {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.series-detail__crew {
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+  font-size: 0.92rem;
+}
+
+.series-detail__trailer {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+}
+
+.series-detail__trailer iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.season-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
