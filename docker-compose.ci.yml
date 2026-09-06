@@ -1,0 +1,38 @@
+# LiveStream CI compose — HTTP-only (no TLS) for GitHub Actions / local smoke
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file .env.ci up -d --build
+#   ./scripts/ci-docker-smoke.sh
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file .env.ci down -v
+
+services:
+  api:
+    env_file:
+      - .env.ci
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4000
+      COOKIE_SECURE: "false"
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: http://localhost
+      JWT_ACCESS_SECRET: ci-access-secret-not-for-production-32b
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production-32b
+      SEED_ADMIN_EMAIL: admin@livestream.local
+      SEED_ADMIN_PASSWORD: ci-admin-pass-change-me
+      SEED_ADMIN_NAME: Admin
+      SEED_EDITOR_EMAIL: editor@livestream.local
+      SEED_EDITOR_PASSWORD: ci-editor-pass-change-me
+      ENABLE_AV1_LADDER: "0"
+      SIGNED_MEDIA: "0"
+      ENCODE_IN_PROCESS: "1"
+
+  proxy:
+    ports:
+      - "8080:80"
+    environment:
+      DOMAIN: localhost
+    volumes:
+      - ./deploy/Caddyfile.ci:/etc/caddy/Caddyfile:ro
+      - livestream_media:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config

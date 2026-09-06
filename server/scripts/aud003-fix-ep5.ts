@@ -1,0 +1,13 @@
+﻿import path from "node:path";
+import fs from "node:fs";
+import { config, REPO_ROOT } from "../src/config.js";
+import { closeDb, getDb, migrate } from "../src/db/index.js";
+import { encodeEpisodeHls } from "../src/services/encodeQueue.js";
+migrate();
+const src = path.join(REPO_ROOT, "test-video.mp4");
+const hls = await encodeEpisodeHls(5, src, undefined, { maxDurationSec: 30 });
+getDb().prepare(`UPDATE episodes SET statusEncode='ready', hlsPath=?, sourcePath=?, updatedAt=datetime('now') WHERE id=5`).run(hls, src);
+const master = fs.readFileSync(path.join(config.hlsDir, "5", "master.m3u8"), "utf8");
+console.log(master);
+console.log("levels", (master.match(/STREAM-INF/g)||[]).length);
+closeDb();

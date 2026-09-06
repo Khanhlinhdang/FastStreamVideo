@@ -1,0 +1,251 @@
+.header {
+  height: var(--header-h);
+  background: transparent;
+  border-bottom: none;
+}
+
+.header__inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.header__logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), #ff9a5c);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #fff;
+}
+
+.header__name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.header__burger {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0.4rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.header__burger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 1px;
+}
+
+.header__nav {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: absolute;
+  top: var(--site-top-h);
+  left: 0;
+  right: 0;
+  padding: 1rem;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  max-height: calc(100vh - var(--site-top-h));
+  overflow-y: auto;
+}
+
+.header__nav.is-open {
+  display: flex;
+}
+
+.header__link {
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.header__link:hover,
+.header__link.is-active {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.header__link.is-active {
+  color: var(--accent);
+}
+
+.header__link--btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.header__auth {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.header__dropdown {
+  position: relative;
+}
+
+.header__menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+  padding: 0.4rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.header__menu--right {
+  min-width: 160px;
+}
+
+.header__menu-item {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.header__menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.header__menu-empty {
+  padding: 0.5rem 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+@media (min-width: 960px) {
+  .header__burger {
+    display: none;
+  }
+
+  .header__nav {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    position: static;
+    padding: 0;
+    background: transparent;
+    border: none;
+    flex: 1;
+    max-height: none;
+    overflow: visible;
+    gap: 0.15rem;
+  }
+
+  .header__auth {
+    margin-left: auto;
+  }
+
+  .header__menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 180px;
+    margin-top: 0.25rem;
+    box-shadow: var(--shadow);
+    z-index: 60;
+  }
+
+  .header__menu--right {
+    left: auto;
+    right: 0;
+  }
+
+  .header__link--btn {
+    width: auto;
+  }
+}
+
+.header__theme {
+  margin-left: auto;
+  margin-right: 0.35rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.1rem;
+  z-index: 2;
+}
+
+.header__backdrop {
+  position: fixed;
+  inset: 0;
+  top: var(--site-top-h);
+  z-index: 40;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.header__nav.is-open {
+  z-index: 45;
+  min-height: calc(100dvh - var(--site-top-h));
+}
+
+.header__link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (min-width: 960px) {
+  .header__theme {
+    margin-left: 0;
+    order: 3;
+  }
+  .header__burger {
+    display: none;
+  }
+  .header__backdrop {
+    display: none;
+  }
+  .header__auth {
+    order: 2;
+  }
+}

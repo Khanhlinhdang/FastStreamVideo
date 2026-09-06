@@ -1,0 +1,78 @@
+.poster-row__wrap {
+  position: relative;
+}
+
+.poster-row__scroller {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0.75rem 0.15rem 1.25rem;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.poster-row__item {
+  flex: 0 0 auto;
+  width: min(160px, 42vw);
+  scroll-snap-align: start;
+}
+
+@media (min-width: 768px) {
+  .poster-row__item {
+    width: 180px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .poster-row__item {
+    width: 200px;
+  }
+}
+
+.poster-row__skel {
+  flex: 0 0 auto;
+  width: min(160px, 42vw);
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius);
+}
+
+.poster-row__chev {
+  position: absolute;
+  top: 40%;
+  z-index: 3;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow);
+}
+
+.poster-row__chev--prev {
+  left: 0.25rem;
+}
+
+.poster-row__chev--next {
+  right: 0.25rem;
+}
+
+.poster-row__chev:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.section-link {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.section-link:hover {
+  color: var(--accent);
+}

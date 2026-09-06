@@ -1,0 +1,104 @@
+.schedule-tabs__days {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  scrollbar-width: thin;
+}
+
+.schedule-tabs__day {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 4.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+
+.schedule-tabs__day:hover {
+  border-color: rgba(255, 107, 53, 0.4);
+}
+
+.schedule-tabs__day.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.schedule-tabs__short {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.schedule-tabs__label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.schedule-tabs__day.is-active .schedule-tabs__label {
+  color: var(--accent);
+}
+
+.schedule-tabs__empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 1rem 0;
+}
+
+.schedule-tabs__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.schedule-tabs__card {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.65rem;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.schedule-tabs__card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.schedule-tabs__poster {
+  width: 48px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+}
+
+.schedule-tabs__title {
+  font-family: var(--font);
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.schedule-tabs__note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
