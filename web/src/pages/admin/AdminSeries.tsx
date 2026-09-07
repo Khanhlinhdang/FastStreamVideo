@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api'
 import type { Genre, Series, SeriesStatus } from '../../api/types'
+import { AdminFilePreview } from '../../components/admin/AdminFilePreview'
 import { EmptyState, LoadingBlock } from '../../components/EmptyState'
 import { statusLabel } from '../../lib/format'
 
@@ -51,18 +52,9 @@ export function AdminSeriesPage() {
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [posterFile, setPosterFile] = useState<File | null>(null)
-  const [posterPreview, setPosterPreview] = useState<string | null>(null)
   const [posterError, setPosterError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!posterFile) {
-      setPosterPreview(null)
-      return
-    }
-    const url = URL.createObjectURL(posterFile)
-    setPosterPreview(url)
-    return () => URL.revokeObjectURL(url)
-  }, [posterFile])
+  const [movieFile, setMovieFile] = useState<File | null>(null)
+  const [uploadHint, setUploadHint] = useState<string | null>(null)
 
   function onPosterPick(file: File | null) {
     setPosterError(null)
@@ -121,6 +113,8 @@ export function AdminSeriesPage() {
     setEditingId(null)
     setForm(emptyForm)
     setPosterFile(null)
+    setMovieFile(null)
+    setUploadHint(null)
     setShowForm(true)
     setError(null)
   }
@@ -151,6 +145,8 @@ export function AdminSeriesPage() {
       trailerUrl: s.trailerUrl || '',
     })
     setPosterFile(null)
+    setMovieFile(null)
+    setUploadHint(null)
     setShowForm(true)
     setError(null)
   }
@@ -159,6 +155,7 @@ export function AdminSeriesPage() {
     e.preventDefault()
     setBusy(true)
     setError(null)
+    setUploadHint(null)
     try {
       const payload = {
         ...form,
@@ -185,19 +182,33 @@ export function AdminSeriesPage() {
       void _c
       void _t
       let id = editingId
+      let movieEpisodeId: string | number | undefined
       if (editingId) {
         await api.adminUpdateSeries(editingId, body)
       } else {
         const created = await api.adminCreateSeries(body)
         id = String(created.id)
+        movieEpisodeId = created.movieEpisodeId
       }
       if (id && posterFile) {
         await api.adminUploadPoster(id, posterFile)
+      }
+      if (!editingId && form.kind === 'movie' && movieFile && id) {
+        let epId = movieEpisodeId != null ? String(movieEpisodeId) : null
+        if (!epId) {
+          const eps = await api.adminEpisodes({ seriesId: id })
+          epId = eps.find((ep) => ep.number === 1)?.id ?? eps[0]?.id ?? null
+        }
+        if (!epId) throw new Error('Không tìm thấy tập #1 của phim lẻ để upload')
+        setUploadHint('Đang upload + xếp hàng encode HLS…')
+        await api.adminUpload(epId, movieFile)
+        setUploadHint('Đã lưu DB + file. Encode chạy nền — theo dõi ở Episodes / Tổng quan.')
       }
       setShowForm(false)
       setForm(emptyForm)
       setEditingId(null)
       setPosterFile(null)
+      setMovieFile(null)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lưu thất bại')
@@ -274,14 +285,26 @@ export function AdminSeriesPage() {
       {showForm && (
         <form className="admin-form admin-form--wide" onSubmit={onSubmit}>
           <h2>{editingId ? 'Sửa nội dung' : 'Tạo nội dung'}</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '-0.5rem' }}>
+            <strong>Phim lẻ:</strong> điền thông tin + chọn 1 file video → lưu là tạo catalog, tập #1 và
+            encode. <strong>Phim bộ:</strong> tạo series trước, rồi thêm tập ở Episodes (auto đọc số
+            tập / tên từ tên file).
+          </p>
           <div className="form-group">
             <label className="label">Loại</label>
             <select
               className="select"
               value={form.kind}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, kind: e.target.value as 'movie' | 'series' }))
-              }
+              disabled={Boolean(editingId)}
+              onChange={(e) => {
+                const kind = e.target.value as 'movie' | 'series'
+                setForm((f) => ({
+                  ...f,
+                  kind,
+                  status: kind === 'movie' ? 'completed' : f.status,
+                }))
+                if (kind !== 'movie') setMovieFile(null)
+              }}
             >
               <option value="series">Phim bộ (Series)</option>
               <option value="movie">Phim lẻ (Movie)</option>
@@ -415,19 +438,7 @@ export function AdminSeriesPage() {
             {posterError && (
               <p style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>{posterError}</p>
             )}
-            {posterPreview && (
-              <img
-                src={posterPreview}
-                alt="Poster preview"
-                style={{
-                  marginTop: 8,
-                  maxWidth: 180,
-                  maxHeight: 260,
-                  objectFit: 'cover',
-                  borderRadius: 8,
-                }}
-              />
-            )}
+            <AdminFilePreview file={posterFile} />
           </div>
           <div className="form-row">
             <div className="form-group">
@@ -469,6 +480,24 @@ export function AdminSeriesPage() {
               />
             </div>
           </div>
+          {form.kind === 'movie' && !editingId && (
+            <div className="form-group">
+              <label className="label">File video phim (khuyến nghị)</label>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => setMovieFile(e.target.files?.[0] ?? null)}
+              />
+              <AdminFilePreview
+                file={movieFile}
+                caption={
+                  movieFile
+                    ? `Sẽ upload: ${movieFile.name} → tập #1 + encode ABR`
+                    : null
+                }
+              />
+            </div>
+          )}
           <div className="form-group">
             <label className="label">
               <input
@@ -496,32 +525,39 @@ export function AdminSeriesPage() {
               </div>
             </div>
           )}
-          <div className="form-group">
-            <label className="label">Lịch chiếu (thứ)</label>
-            <div className="chip-row">
-              {WEEKDAYS.map((d) => (
-                <button
-                  key={d.v}
-                  type="button"
-                  className={`btn btn-sm ${form.scheduleWeekdays.includes(d.v) ? 'btn-primary' : 'btn-ghost'}`}
-                  onClick={() => toggleWeekday(d.v)}
-                >
-                  {d.label}
-                </button>
-              ))}
+          {form.kind === 'series' && (
+            <div className="form-group">
+              <label className="label">Lịch chiếu (thứ)</label>
+              <div className="chip-row">
+                {WEEKDAYS.map((d) => (
+                  <button
+                    key={d.v}
+                    type="button"
+                    className={`btn btn-sm ${form.scheduleWeekdays.includes(d.v) ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => toggleWeekday(d.v)}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+              <input
+                className="input"
+                style={{ marginTop: '0.5rem' }}
+                placeholder="Ghi chú lịch (VD: 21:00)"
+                value={form.scheduleNote}
+                onChange={(e) => setForm((f) => ({ ...f, scheduleNote: e.target.value }))}
+              />
             </div>
-            <input
-              className="input"
-              style={{ marginTop: '0.5rem' }}
-              placeholder="Ghi chú lịch (VD: 21:00)"
-              value={form.scheduleNote}
-              onChange={(e) => setForm((f) => ({ ...f, scheduleNote: e.target.value }))}
-            />
-          </div>
+          )}
           {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+          {uploadHint && <p style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>{uploadHint}</p>}
           <div className="admin-actions">
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              {busy ? 'Đang lưu...' : 'Lưu'}
+              {busy
+                ? 'Đang lưu...'
+                : !editingId && form.kind === 'movie' && movieFile
+                  ? 'Lưu phim + upload encode'
+                  : 'Lưu'}
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>
               Hủy
@@ -551,7 +587,7 @@ export function AdminSeriesPage() {
                   <td>
                     <Link to={`/phim/${s.slug}`}>{s.title}</Link>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {s.slug}
+                      {s.kind === 'movie' ? 'Phim lẻ' : 'Phim bộ'} · {s.slug}
                       {s.qualityLabel ? ` · ${s.qualityLabel}` : ''}
                       {s.audioLabel ? ` · ${s.audioLabel}` : ''}
                     </div>
@@ -570,7 +606,7 @@ export function AdminSeriesPage() {
                         to={`/admin/episodes?seriesId=${s.id}`}
                         className="btn btn-ghost btn-sm"
                       >
-                        Tập
+                        {s.kind === 'movie' ? 'Video' : 'Tập'}
                       </Link>
                       <button
                         type="button"

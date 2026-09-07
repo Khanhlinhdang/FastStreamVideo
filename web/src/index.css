@@ -245,10 +245,22 @@ ul {
   gap: 1rem 0.85rem;
   /* Allow hover preview to paint outside the cell without clipping. */
   overflow: visible;
+  position: relative;
 }
 
-.section:has(.poster-grid) {
+.section:has(.poster-grid),
+.section:has(.poster-card-wrap--preview) {
   overflow: visible;
+  position: relative;
+}
+
+/* Elevate above the next section only — keep below sticky .site-top (50) */
+.section:has(.poster-card-wrap--preview) {
+  z-index: 40;
+}
+
+.poster-grid:has(.poster-card-wrap--preview) {
+  z-index: 1;
 }
 
 @media (min-width: 480px) {

@@ -1,11 +1,28 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../../api'
 import type { EncodeJob, Episode, Series } from '../../api/types'
+import { AdminFilePreview } from '../../components/admin/AdminFilePreview'
+import { AdminImportPreview } from '../../components/admin/AdminImportPreview'
 import { EmptyState, LoadingBlock } from '../../components/EmptyState'
 import { encodeStatusLabel } from '../../lib/format'
+import {
+  assignEpisodeNumbers,
+  parseEpisodeFilename,
+  type ParseConfidence,
+} from '../../lib/parseEpisodeFilename'
 
 type SubRow = { id: number | string; label: string; lang: string; url: string }
+
+type BulkRow = {
+  key: string
+  file: File
+  number: number
+  title: string
+  confidence: ParseConfidence
+  conflict: boolean
+  autoAssigned: boolean
+}
 
 export function AdminEpisodesPage() {
   const [params] = useSearchParams()
@@ -23,14 +40,37 @@ export function AdminEpisodesPage() {
   const [busy, setBusy] = useState(false)
   const [jobs, setJobs] = useState<Record<string, EncodeJob>>({})
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
   const [q, setQ] = useState('')
   const [manageId, setManageId] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editNumber, setEditNumber] = useState(1)
+  const [editTitle, setEditTitle] = useState('')
+  const [editQuality, setEditQuality] = useState('1080p')
+  const [editAudio, setEditAudio] = useState('SUB+TM')
+  const [editIntroEnd, setEditIntroEnd] = useState('')
+  const [editCreditsStart, setEditCreditsStart] = useState('')
   const [subs, setSubs] = useState<SubRow[]>([])
   const [subLabel, setSubLabel] = useState('Tiếng Việt')
   const [subLang, setSubLang] = useState('vi')
   const [audioTrackLabel, setAudioTrackLabel] = useState('Audio phụ')
   const [audioTrackLang, setAudioTrackLang] = useState('en')
   const [hlsAudio, setHlsAudio] = useState<Array<{ label: string; lang: string }>>([])
+  const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([])
+
+  const selectedSeries = useMemo(
+    () => seriesList.find((s) => String(s.id) === String(seriesId)),
+    [seriesList, seriesId],
+  )
+  const isMovie = selectedSeries?.kind === 'movie'
+
+  const usedNumbers = useMemo(() => {
+    const set = new Set<number>()
+    for (const ep of episodes) {
+      if (String(ep.seriesId) === String(seriesId)) set.add(ep.number)
+    }
+    return set
+  }, [episodes, seriesId])
 
   async function load() {
     const [series, eps, jobList] = await Promise.all([
@@ -55,7 +95,15 @@ export function AdminEpisodesPage() {
       if (j) map[j.id] = j
     }
     setJobs(map)
-    if (!seriesId && series[0]) setSeriesId(String(series[0].id))
+    const nextSeriesId = filterSeriesId || seriesId || (series[0] ? String(series[0].id) : '')
+    if (nextSeriesId && nextSeriesId !== seriesId) setSeriesId(nextSeriesId)
+    if (nextSeriesId) {
+      const nums = eps
+        .filter((ep) => String(ep.seriesId) === String(nextSeriesId))
+        .map((ep) => ep.number)
+      const max = nums.length ? Math.max(...nums) : 0
+      setNumber(max + 1)
+    }
     setLoading(false)
   }
 
@@ -84,6 +132,31 @@ export function AdminEpisodesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobs])
 
+  function applyFileParse(uploadFile: File | null) {
+    setFile(uploadFile)
+    if (!uploadFile || isMovie) return
+    const parsed = parseEpisodeFilename(uploadFile.name, number)
+    if (parsed.number != null) setNumber(parsed.number)
+    setTitle(parsed.title)
+  }
+
+  function buildBulkPreview(fileList: FileList | null) {
+    if (!fileList?.length || !seriesId) return
+    const assigned = assignEpisodeNumbers(Array.from(fileList), usedNumbers, number)
+    setBulkPreview(
+      assigned.map((row, i) => ({
+        key: `${row.file.name}-${i}-${row.file.size}`,
+        file: row.file,
+        number: row.number,
+        title: row.title,
+        confidence: row.confidence,
+        conflict: row.conflict,
+        autoAssigned: row.autoAssigned,
+      })),
+    )
+    setError(null)
+  }
+
   async function openManage(ep: Episode) {
     setManageId(ep.id)
     setError(null)
@@ -104,56 +177,122 @@ export function AdminEpisodesPage() {
     }
   }
 
+  async function runUpload(episodeId: string, uploadFile: File) {
+    setUploadingId(episodeId)
+    setUploadPct((prev) => ({ ...prev, [episodeId]: 0 }))
+    const res = await api.adminUpload(episodeId, uploadFile, (p) => {
+      setUploadPct((prev) => ({ ...prev, [episodeId]: p.percent }))
+    })
+    if (res.job) setJobs((prev) => ({ ...prev, [res.job!.id]: res.job! }))
+    else if (res.jobId) {
+      const job = await api.adminJob(res.jobId)
+      if (job) setJobs((prev) => ({ ...prev, [job.id]: job }))
+    }
+    setUploadPct((prev) => {
+      const next = { ...prev }
+      delete next[episodeId]
+      return next
+    })
+    return res
+  }
+
   async function onCreate(e: FormEvent) {
     e.preventDefault()
     if (!seriesId) return
     setBusy(true)
     setError(null)
     try {
+      if (isMovie) {
+        const existing = episodes.find(
+          (ep) => String(ep.seriesId) === String(seriesId) && ep.number === 1,
+        )
+        if (existing) {
+          if (!file) {
+            setError('Phim lẻ đã có tập #1 — chọn file để thay video / encode lại.')
+            return
+          }
+          await runUpload(String(existing.id), file)
+          setFile(null)
+          await load()
+          return
+        }
+      }
+
       const ep = await api.adminCreateEpisode({
         seriesId,
-        number,
-        title: title || `Tập ${number}`,
+        number: isMovie ? 1 : number,
+        title: title || (isMovie ? selectedSeries?.title || 'Phim' : `Tập ${number}`),
         qualityLabel,
         audioLabel,
       })
       if (file) {
-        const res = await api.adminUpload(String(ep.id), file)
-        if (res.job) {
-          setJobs((prev) => ({ ...prev, [res.job!.id]: res.job! }))
-        } else if (res.jobId) {
-          const job = await api.adminJob(res.jobId)
-          if (job) setJobs((prev) => ({ ...prev, [job.id]: job }))
-        }
+        await runUpload(String(ep.id), file)
         setFile(null)
       }
       setTitle('')
-      setNumber((n) => n + 1)
+      if (!isMovie) setNumber((n) => n + 1)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Tạo episode thất bại')
     } finally {
       setBusy(false)
+      setUploadingId(null)
     }
   }
 
   async function onUpload(episodeId: string, uploadFile: File | null) {
     if (!uploadFile) return
-    setUploadingId(episodeId)
     setError(null)
     try {
-      const res = await api.adminUpload(episodeId, uploadFile)
-      if (res.job) {
-        setJobs((prev) => ({ ...prev, [res.job!.id]: res.job! }))
-      } else if (res.jobId) {
-        const job = await api.adminJob(res.jobId)
-        if (job) setJobs((prev) => ({ ...prev, [job.id]: job }))
-      }
+      await runUpload(episodeId, uploadFile)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload thất bại')
     } finally {
       setUploadingId(null)
+    }
+  }
+
+  function openEdit(ep: Episode) {
+    setEditId(ep.id)
+    setEditNumber(ep.number)
+    setEditTitle(ep.title || '')
+    setEditQuality(ep.qualityLabel || '1080p')
+    setEditAudio(ep.audioLabel || 'SUB+TM')
+    setEditIntroEnd(
+      ep.introEndSec != null && ep.introEndSec > 0 ? String(ep.introEndSec) : '',
+    )
+    setEditCreditsStart(
+      ep.creditsStartSec != null && ep.creditsStartSec > 0
+        ? String(ep.creditsStartSec)
+        : '',
+    )
+    setError(null)
+  }
+
+  async function onSaveEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!editId) return
+    setBusy(true)
+    setError(null)
+    try {
+      const introRaw = editIntroEnd.trim()
+      const creditsRaw = editCreditsStart.trim()
+      await api.adminUpdateEpisode(editId, {
+        seriesId: episodes.find((x) => x.id === editId)?.seriesId || seriesId,
+        number: editNumber,
+        title: editTitle,
+        qualityLabel: editQuality,
+        audioLabel: editAudio,
+        introEndSec: introRaw === '' ? null : Number(introRaw),
+        creditsStartSec: creditsRaw === '' ? null : Number(creditsRaw),
+      })
+      setEditId(null)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cập nhật tập thất bại')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -178,36 +317,38 @@ export function AdminEpisodesPage() {
     }
   }
 
-  async function onBulkFiles(fileList: FileList | null) {
-    if (!fileList?.length || !seriesId) return
+  async function confirmBulkImport() {
+    if (!bulkPreview.length || !seriesId || isMovie) return
     setBusy(true)
     setError(null)
     try {
-      const files = Array.from(fileList)
+      const occupied = new Set(usedNumbers)
+      for (const row of bulkPreview) {
+        if (occupied.has(row.number)) {
+          throw new Error(`Trùng số tập ${row.number} — sửa preview trước khi import`)
+        }
+        occupied.add(row.number)
+      }
       let nextNum = number
-      for (const f of files) {
-        const m = f.name.match(/(\d+)/)
-        const n = m ? Number(m[1]) : nextNum
+      for (const row of bulkPreview) {
         const ep = await api.adminCreateEpisode({
           seriesId,
-          number: n,
-          title: f.name.replace(/\.[^.]+$/, ''),
+          number: row.number,
+          title: row.title || `Tập ${row.number}`,
           qualityLabel,
           audioLabel,
         })
-        const res = await api.adminUpload(String(ep.id), f)
-        if (res.jobId) {
-          const job = await api.adminJob(res.jobId)
-          if (job) setJobs((prev) => ({ ...prev, [job.id]: job }))
-        }
-        nextNum = Math.max(nextNum, n) + 1
+        await runUpload(String(ep.id), row.file)
+        nextNum = Math.max(nextNum, row.number) + 1
       }
       setNumber(nextNum)
+      setBulkPreview([])
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bulk import thất bại')
     } finally {
       setBusy(false)
+      setUploadingId(null)
     }
   }
 
@@ -261,60 +402,158 @@ export function AdminEpisodesPage() {
   return (
     <div>
       <form className="admin-form admin-form--wide" onSubmit={onCreate}>
-        <h2>Thêm / upload tập</h2>
+        <h2>{isMovie ? 'Upload / thay video phim lẻ' : 'Thêm / upload tập'}</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '-0.5rem' }}>
-          Upload dùng ladder ABR đầy đủ (480/720/1080+). Có thể tạo tập rồi upload, hoặc tạo kèm
-          file. Thay video = upload lại (re-encode). Bulk: chọn nhiều file — số tập lấy từ tên
-          (`ep12.mp4` → 12).
+          {isMovie ? (
+            <>
+              Phim lẻ chỉ có <strong>1 tập</strong>. Chọn file video → upload/encode. Không cần đổi tên
+              file.
+            </>
+          ) : (
+            <>
+              Chọn file video sẽ <strong>tự đọc số tập + tên</strong> từ tên file (
+              <code>S01E12</code>, <code>EP12</code>, <code>12 - Title</code>, <code>Tập 12</code>
+              …). Bulk: chọn nhiều file → xem preview → xác nhận import.
+            </>
+          )}
         </p>
+
+        {!isMovie && (
+          <div className="form-group">
+            <label className="label">Bulk import (nhiều file → preview)</label>
+            <input
+              type="file"
+              accept="video/*"
+              multiple
+              disabled={busy || !seriesId}
+              onChange={(e) => {
+                buildBulkPreview(e.target.files)
+                e.target.value = ''
+              }}
+            />
+          </div>
+        )}
+
+        {bulkPreview.length > 0 && (
+          <AdminImportPreview
+            title={`Preview import (${bulkPreview.length} file)`}
+            hint={
+              <>
+                Sửa số tập / tên nếu nhận diện sai, rồi bấm xác nhận. File gốc không cần đổi tên.
+              </>
+            }
+            busy={busy}
+            confirmLabel={`Xác nhận import ${bulkPreview.length} tập`}
+            onConfirm={() => void confirmBulkImport()}
+            onCancel={() => setBulkPreview([])}
+          >
+            <div className="table-wrap">
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>File</th>
+                    <th>Số tập</th>
+                    <th>Tên tập</th>
+                    <th>Độ tin cậy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkPreview.map((row) => (
+                    <tr key={row.key}>
+                      <td style={{ fontSize: '0.8rem', maxWidth: 220, wordBreak: 'break-word' }}>
+                        {row.file.name}
+                        {(row.conflict || row.autoAssigned) && (
+                          <div style={{ color: 'var(--warning, #eab308)', fontSize: '0.75rem' }}>
+                            {row.conflict
+                              ? 'Trùng số — đã gán lại'
+                              : 'Không parse được — gán tự động'}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          type="number"
+                          min={1}
+                          value={row.number}
+                          onChange={(e) => {
+                            const n = Number(e.target.value)
+                            setBulkPreview((rows) =>
+                              rows.map((r) => (r.key === row.key ? { ...r, number: n } : r)),
+                            )
+                          }}
+                          style={{ width: 80 }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          value={row.title}
+                          onChange={(e) => {
+                            const t = e.target.value
+                            setBulkPreview((rows) =>
+                              rows.map((r) => (r.key === row.key ? { ...r, title: t } : r)),
+                            )
+                          }}
+                        />
+                      </td>
+                      <td style={{ fontSize: '0.8rem' }}>{row.confidence}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </AdminImportPreview>
+        )}
+
         <div className="form-group">
-          <label className="label">Bulk import (nhiều file)</label>
-          <input
-            type="file"
-            accept="video/*"
-            multiple
-            disabled={busy || !seriesId}
-            onChange={(e) => void onBulkFiles(e.target.files)}
-          />
-        </div>
-        <div className="form-group">
-          <label className="label">Series</label>
+          <label className="label">{isMovie ? 'Phim' : 'Series'}</label>
           <select
             className="select"
             required
             value={seriesId}
-            onChange={(e) => setSeriesId(e.target.value)}
+            onChange={(e) => {
+              setSeriesId(e.target.value)
+              setBulkPreview([])
+              setFile(null)
+              setTitle('')
+            }}
           >
             <option value="">— Chọn —</option>
             {seriesList.map((s) => (
               <option key={String(s.id)} value={String(s.id)}>
+                {s.kind === 'movie' ? '[Lẻ] ' : '[Bộ] '}
                 {s.title}
               </option>
             ))}
           </select>
         </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="label">Số tập</label>
-            <input
-              className="input"
-              type="number"
-              min={1}
-              required
-              value={number}
-              onChange={(e) => setNumber(Number(e.target.value))}
-            />
+
+        {!isMovie && (
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Số tập</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                required
+                value={number}
+                onChange={(e) => setNumber(Number(e.target.value))}
+              />
+            </div>
+            <div className="form-group">
+              <label className="label">Tiêu đề tập</label>
+              <input
+                className="input"
+                value={title}
+                placeholder={`Tập ${number}`}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="form-group">
-            <label className="label">Tiêu đề</label>
-            <input
-              className="input"
-              value={title}
-              placeholder={`Tập ${number}`}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-        </div>
+        )}
+
         <div className="form-row">
           <div className="form-group">
             <label className="label">Nhãn chất lượng</label>
@@ -333,17 +572,37 @@ export function AdminEpisodesPage() {
             />
           </div>
           <div className="form-group">
-            <label className="label">File video (tuỳ chọn)</label>
+            <label className="label">File video</label>
             <input
               type="file"
               accept="video/*"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => applyFileParse(e.target.files?.[0] ?? null)}
+            />
+            <AdminFilePreview
+              file={file}
+              caption={
+                file && !isMovie
+                  ? `Auto: tập ${number} — ${title || '(không tên)'}`
+                  : undefined
+              }
             />
           </div>
         </div>
         {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
-        <button type="submit" className="btn btn-primary" disabled={busy || !seriesId}>
-          {busy ? 'Đang xử lý...' : file ? 'Tạo + upload encode' : 'Tạo episode'}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={busy || !seriesId || (isMovie && !file)}
+        >
+          {busy
+            ? 'Đang xử lý...'
+            : isMovie
+              ? file
+                ? 'Upload / thay video + encode'
+                : 'Cần chọn file video'
+              : file
+                ? 'Tạo + upload encode'
+                : 'Tạo episode'}
         </button>
       </form>
 
@@ -363,6 +622,88 @@ export function AdminEpisodesPage() {
           </button>
         </div>
       </div>
+
+      {editId && (
+        <form
+          className="admin-form admin-form--wide"
+          style={{ marginBottom: '1.25rem' }}
+          onSubmit={onSaveEdit}
+        >
+          <h2>Sửa metadata tập #{editId}</h2>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Số tập</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={editNumber}
+                onChange={(e) => setEditNumber(Number(e.target.value) || 1)}
+              />
+            </div>
+            <div className="form-group" style={{ flex: 2 }}>
+              <label className="label">Tiêu đề</label>
+              <input
+                className="input"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="label">Chất lượng</label>
+              <input
+                className="input"
+                value={editQuality}
+                onChange={(e) => setEditQuality(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="label">Audio label</label>
+              <input
+                className="input"
+                value={editAudio}
+                onChange={(e) => setEditAudio(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Intro kết thúc (giây)</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                placeholder="vd. 90"
+                value={editIntroEnd}
+                onChange={(e) => setEditIntroEnd(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="label">Credits bắt đầu (giây)</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                placeholder="vd. 2400"
+                value={editCreditsStart}
+                onChange={(e) => setEditCreditsStart(e.target.value)}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              Lưu
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setEditId(null)}
+            >
+              Hủy
+            </button>
+          </div>
+        </form>
+      )}
 
       {manageId && (
         <div className="admin-form admin-form--wide" style={{ marginBottom: '1.25rem' }}>
@@ -498,7 +839,7 @@ export function AdminEpisodesPage() {
                     <td>
                       <label className="btn btn-ghost btn-sm">
                         {uploadingId === ep.id
-                          ? 'Đang upload...'
+                          ? `Upload ${uploadPct[ep.id] ?? 0}%`
                           : ep.statusEncode === 'ready'
                             ? 'Thay video'
                             : 'Chọn file'}
@@ -510,6 +851,18 @@ export function AdminEpisodesPage() {
                           onChange={(e) => onUpload(ep.id, e.target.files?.[0] ?? null)}
                         />
                       </label>
+                      {uploadingId === ep.id && (
+                        <div className="job-status" style={{ marginTop: 6 }}>
+                          <div className="job-status__bar">
+                            <span
+                              style={{
+                                width: `${Math.min(100, uploadPct[ep.id] ?? 0)}%`,
+                              }}
+                            />
+                          </div>
+                          <span>{uploadPct[ep.id] ?? 0}%</span>
+                        </div>
+                      )}
                     </td>
                     <td>
                       <button
@@ -521,6 +874,14 @@ export function AdminEpisodesPage() {
                       </button>
                     </td>
                     <td>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ marginRight: 6 }}
+                        onClick={() => openEdit(ep)}
+                      >
+                        Sửa
+                      </button>
                       {status === 'failed' && job ? (
                         <button
                           type="button"

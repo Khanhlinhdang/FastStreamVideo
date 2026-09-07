@@ -65,6 +65,8 @@ export interface Episode {
   subtitles?: Array<{ id: number | string; label: string; lang: string; url: string }>
   thumbsVttUrl?: string | null
   audioTracks?: Array<{ index: number; label: string; lang: string; uri?: string }>
+  introEndSec?: number | null
+  creditsStartSec?: number | null
 }
 
 export interface ScheduleItem {
@@ -212,6 +214,8 @@ export interface AdminEpisodeInput {
   title: string
   qualityLabel?: string
   audioLabel?: string
+  introEndSec?: number | null
+  creditsStartSec?: number | null
 }
 
 export interface AdminScheduleInput {

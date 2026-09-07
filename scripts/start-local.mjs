@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * One-command local bootstrap: migrate → seed → (optional demo encode) → start API.
+ * One-command local bootstrap: migrate → seed-if-empty → start API.
+ * Does NOT wipe existing uploads/catalog (use `npm run db:reset` for a full wipe).
  * Usage: npm run start:local
  */
 import { spawn } from 'node:child_process';
@@ -27,8 +28,8 @@ function run(cmd, args, opts = {}) {
 async function main() {
   console.log('[start-local] migrate…');
   await run('npm', ['run', 'db:migrate']);
-  console.log('[start-local] seed…');
-  await run('npm', ['run', 'db:seed']);
+  console.log('[start-local] seed-if-empty (keeps existing catalog/uploads)…');
+  await run('npm', ['run', 'db:seed-if-empty']);
   console.log('[start-local] starting API on :4000…');
   await run('npm', ['run', 'dev:server']);
 }

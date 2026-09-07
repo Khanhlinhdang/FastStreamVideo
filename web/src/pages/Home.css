@@ -32,6 +32,11 @@
 
 .home-catalog {
   overflow: visible;
+  position: relative;
+}
+
+.home-catalog:has(.poster-card-wrap--preview) {
+  z-index: 40;
 }
 
 .home-presets {

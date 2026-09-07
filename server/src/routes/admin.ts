@@ -276,15 +276,19 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         for (const gid of d.genreIds) ins.run(seriesId, gid);
       }
       // Movie: ensure a single placeholder episode #1 for playback unit
+      let movieEpisodeId: number | undefined;
       if ((d.kind ?? 'series') === 'movie') {
-        db.prepare(
-          `INSERT INTO episodes (seriesId, seasonNumber, number, title, qualityLabel, audioLabel)
-           VALUES (?, 1, 1, ?, ?, ?)`,
-        ).run(seriesId, d.title, d.qualityLabel ?? '1080p', d.audioLabel ?? 'SUB+TM');
+        const epIns = db
+          .prepare(
+            `INSERT INTO episodes (seriesId, seasonNumber, number, title, qualityLabel, audioLabel)
+             VALUES (?, 1, 1, ?, ?, ?)`,
+          )
+          .run(seriesId, d.title, d.qualityLabel ?? '1080p', d.audioLabel ?? 'SUB+TM');
+        movieEpisodeId = Number(epIns.lastInsertRowid);
       }
       replaceSchedule(seriesId, d.scheduleWeekdays, d.scheduleNote);
       const row = db.prepare(`SELECT * FROM series WHERE id = ?`).get(seriesId) as SeriesRow;
-      return mapAdminSeries(row);
+      return { ...mapAdminSeries(row), movieEpisodeId };
     } catch {
       return reply.code(409).send({ error: 'Slug conflict' });
     }
@@ -483,6 +487,28 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
     const d = parsed.data;
     const db = getDb();
+    const parent = db
+      .prepare(`SELECT id, kind, title FROM series WHERE id = ? AND deletedAt IS NULL`)
+      .get(d.seriesId) as { id: number; kind: string | null; title: string } | undefined;
+    if (!parent) return reply.code(404).send({ error: 'Series not found' });
+    if ((parent.kind ?? 'series') === 'movie') {
+      if (d.number !== 1) {
+        return reply
+          .code(400)
+          .send({ error: 'Phim lẻ chỉ có 1 tập — dùng số tập = 1 hoặc upload vào tập sẵn có' });
+      }
+      const existing = db
+        .prepare(
+          `SELECT * FROM episodes WHERE seriesId = ? AND number = 1 AND deletedAt IS NULL`,
+        )
+        .get(d.seriesId) as EpisodeRow | undefined;
+      if (existing) {
+        return reply.code(409).send({
+          error: 'Phim lẻ đã có tập #1 — hãy upload/thay video trên tập đó thay vì tạo mới',
+          episodeId: existing.id,
+        });
+      }
+    }
     try {
       const r = db
         .prepare(
@@ -493,7 +519,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
           d.seriesId,
           d.seasonNumber ?? 1,
           d.number,
-          d.title ?? `Tập ${d.number}`,
+          d.title ?? (parent.kind === 'movie' ? parent.title : `Tập ${d.number}`),
           d.durationSec ?? 0,
           d.qualityLabel ?? '1080p',
           d.audioLabel ?? 'SUB+TM',
@@ -518,6 +544,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       durationSec: z.coerce.number().int().optional(),
       qualityLabel: z.string().optional(),
       audioLabel: z.string().optional(),
+      introEndSec: z.coerce.number().int().nonnegative().nullable().optional(),
+      creditsStartSec: z.coerce.number().int().nonnegative().nullable().optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
@@ -527,25 +555,36 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .get(id);
     if (!existing) return reply.code(404).send({ error: 'Not found' });
     const d = parsed.data;
-    db.prepare(
-      `UPDATE episodes SET
-        number = COALESCE(?, number),
-        seasonNumber = COALESCE(?, seasonNumber),
-        title = COALESCE(?, title),
-        durationSec = COALESCE(?, durationSec),
-        qualityLabel = COALESCE(?, qualityLabel),
-        audioLabel = COALESCE(?, audioLabel),
-        updatedAt = datetime('now')
-       WHERE id = ?`,
-    ).run(
-      d.number ?? null,
-      d.seasonNumber ?? null,
-      d.title ?? null,
-      d.durationSec ?? null,
-      d.qualityLabel ?? null,
-      d.audioLabel ?? null,
-      id,
-    );
+    try {
+      const existingRow = existing as EpisodeRow;
+      db.prepare(
+        `UPDATE episodes SET
+          number = COALESCE(?, number),
+          seasonNumber = COALESCE(?, seasonNumber),
+          title = COALESCE(?, title),
+          durationSec = COALESCE(?, durationSec),
+          qualityLabel = COALESCE(?, qualityLabel),
+          audioLabel = COALESCE(?, audioLabel),
+          introEndSec = ?,
+          creditsStartSec = ?,
+          updatedAt = datetime('now')
+         WHERE id = ?`,
+      ).run(
+        d.number ?? null,
+        d.seasonNumber ?? null,
+        d.title ?? null,
+        d.durationSec ?? null,
+        d.qualityLabel ?? null,
+        d.audioLabel ?? null,
+        d.introEndSec !== undefined ? d.introEndSec : (existingRow.introEndSec ?? null),
+        d.creditsStartSec !== undefined
+          ? d.creditsStartSec
+          : (existingRow.creditsStartSec ?? null),
+        id,
+      );
+    } catch {
+      return reply.code(409).send({ error: 'Episode number conflict' });
+    }
     return mapEpisode(db.prepare(`SELECT * FROM episodes WHERE id = ?`).get(id) as EpisodeRow);
   });
 

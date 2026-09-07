@@ -93,10 +93,14 @@ cd C:\Users\ATK\Desktop\StreamSqueeze
 Copy-Item .env.example .env -ErrorAction SilentlyContinue
 npm install
 npm run db:migrate
-npm run db:seed
+npm run db:seed-if-empty   # chỉ seed khi DB trống — KHÔNG xóa upload đã có
+# lần đầu (catalog demo): npm run db:seed
 npm run demo:encode   # một lần — tạo HLS demo dưới media/hls/
 npm run dev           # API :4000 + Web :5173
 ```
+
+> **Persistence:** Upload được lưu vào SQLite `data/livestream.db` + file dưới `media/uploads` và `media/hls`.  
+> `npm run dev` / `start:local` **không** xóa catalog. Chỉ `npm run db:seed` hoặc `db:reset` mới wipe dữ liệu (file media trên đĩa có thể còn nhưng mất liên kết DB).
 
 Hai terminal riêng:
 
@@ -159,10 +163,11 @@ Seed credentials và quy trình upload/encode nằm trong **[`docs/ADMIN.md`](./
 | `npm run dev:server` | API hot reload (`tsx watch`) |
 | `npm run dev:web` | Vite web `:5173` |
 | `npm run db:migrate` | Áp schema SQLite |
-| `npm run db:seed` | Seed genres / series / users |
-| `npm run db:reset` | Xóa DB + seed lại |
+| `npm run db:seed` | Seed genres / series / users (**xóa catalog cũ**) |
+| `npm run db:seed-if-empty` | Seed chỉ khi chưa có user |
+| `npm run db:reset` | Seed lại toàn bộ (destructive) |
 | `npm run demo:encode` | Tải + encode open movies |
-| `npm run start:local` | migrate → seed → API |
+| `npm run start:local` | migrate → seed-if-empty → API |
 | `npm run build` | Build server + web |
 | `npm run start` | Chạy API đã build (`server/dist`) |
 

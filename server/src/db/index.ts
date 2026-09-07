@@ -107,6 +107,17 @@ function applyAdditiveMigrations(database: Database.Database): void {
   }
   database.exec(`CREATE INDEX IF NOT EXISTS idx_series_kind ON series(kind)`);
 
+  // P1-4: skip intro / credits markers on episodes
+  const episodeAddCols: Array<[string, string]> = [
+    ['introEndSec', `INTEGER`],
+    ['creditsStartSec', `INTEGER`],
+  ];
+  for (const [col, decl] of episodeAddCols) {
+    if (!tableHasColumn(database, 'episodes', col)) {
+      database.exec(`ALTER TABLE episodes ADD COLUMN ${col} ${decl}`);
+    }
+  }
+
   // COMP-007: seasonNumber on episodes + unique (seriesId, season, number)
   if (!tableHasColumn(database, 'episodes', 'seasonNumber')) {
     database.exec(`ALTER TABLE episodes ADD COLUMN seasonNumber INTEGER NOT NULL DEFAULT 1`);

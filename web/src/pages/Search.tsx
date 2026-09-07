@@ -155,12 +155,19 @@ export function SearchPage() {
           </label>
           <label>
             Quốc gia
-            <input
+            <select
               className="input"
-              placeholder="Nhật, Hàn..."
               value={country}
               onChange={(e) => setCountry(e.target.value)}
-            />
+            >
+              <option value="">Tất cả</option>
+              <option value="Nhật">Nhật</option>
+              <option value="Hàn">Hàn</option>
+              <option value="Trung">Trung</option>
+              <option value="Mỹ">Mỹ</option>
+              <option value="Việt Nam">Việt Nam</option>
+              <option value="Thái">Thái</option>
+            </select>
           </label>
           <label>
             Trạng thái

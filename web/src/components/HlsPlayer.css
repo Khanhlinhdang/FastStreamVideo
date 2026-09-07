@@ -4,7 +4,16 @@
   aspect-ratio: 16 / 9;
   background: #000;
   border-radius: var(--radius);
+  /* visible so seek scrub thumb preview is not clipped */
+  overflow: visible;
+}
+
+.hls-player__stage {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   overflow: hidden;
+  background: #000;
 }
 
 .hls-player__video {
@@ -36,7 +45,7 @@
   position: absolute;
   top: 0.65rem;
   right: 0.65rem;
-  z-index: 2;
+  z-index: 7;
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -95,7 +104,7 @@
   left: 0.75rem;
   right: 0.75rem;
   bottom: 2.75rem;
-  z-index: 3;
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -145,7 +154,7 @@
   align-items: center;
   gap: 0.25rem;
   pointer-events: none;
-  z-index: 4;
+  z-index: 8;
 }
 
 .hls-player__thumb-sprite {
@@ -390,6 +399,14 @@
 }
 
 
+
+.hls-player__skip {
+  position: absolute;
+  right: 1rem;
+  bottom: 4.5rem;
+  z-index: 6;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
 
 .hls-player__slow,
 .hls-player__rotate {

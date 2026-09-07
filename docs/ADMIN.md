@@ -67,8 +67,15 @@ Bearer JWT + `requireEditor` (admin\|editor) trừ khi ghi chú admin-only.
 
 ## Upload → encode job
 
-1. Tạo series (nếu chưa có) trong **Series**.
-2. Vào **Episodes**: chọn series, số tập, (tuỳ chọn) chọn file → Tạo + upload; hoặc upload/thay file trên dòng tập có sẵn.
+### Phim lẻ (movie)
+1. **Admin → Series** → loại *Phim lẻ* → điền metadata + chọn 1 file video → **Lưu phim + upload encode**.
+2. Server tự tạo tập `#1`, lưu `sourcePath` vào SQLite, xếp hàng encode ABR.
+
+### Phim bộ (series)
+1. Tạo series (không cần video ngay).
+2. **Admin → Episodes**: chọn series, chọn 1 file (auto đọc số tập + tên từ filename) hoặc **bulk** nhiều file → preview → xác nhận.
+   - Parser hỗ trợ: `S01E12`, `EP12` / `E12`, `Tập 12`, `12 - Title`, `[12]`.
+   - Không cần đổi tên file; sửa số/tên trên preview nếu nhận diện sai.
 3. Server lưu `media/uploads/ep-<id>-<timestamp>.<ext>`.
 4. `statusEncode = queued` → job queue in-process.
 5. Worker ffmpeg:
@@ -78,6 +85,30 @@ Bearer JWT + `requireEditor` (admin\|editor) trừ khi ghi chú admin-only.
    - **Optional:** `ENABLE_AV1_LADDER=1` thêm 1 rung **VP9** (`libvpx-vp9`, ưu tiên trên Windows) hoặc AV1 (`libaom-av1`) ở 720p — encode chậm hơn H.264; mặc định tắt
 6. Khi xong: `ready`, `hlsPath = hls/<episodeId>/master.m3u8`.
 7. Theo dõi: thanh tiến độ trên UI hoặc `GET /api/admin/jobs/:id`.
+
+### Persistence (đừng seed lại nếu muốn giữ upload)
+- DB: `data/livestream.db` · Media: `media/uploads`, `media/hls`
+- `npm run dev` / `npm run start:local` (`seed-if-empty`) **giữ** dữ liệu
+- `npm run db:seed` / `db:reset` **xóa catalog** trong DB (file media trên đĩa có thể còn orphan)
+
+## Playback cache (máy client)
+
+| Lớp | Hành vi |
+|---|---|
+| hls.js / MSE buffer | ~60–120s trong RAM; đổi tập → player remount → `hls.destroy()` giải phóng buffer |
+| Service Worker | **Không** cache `/media`, `.m3u8`, `.m4s`, `.mp4` |
+| HTTP disk cache (trình duyệt) | Segment `.m4s` / `init.mp4` có `Cache-Control: immutable` (1 năm) — browser có thể giữ trên đĩa theo chính sách cache của Chrome/Edge; đổi video **không** xóa ngay toàn bộ cache cũ, nhưng trình duyệt tự eviction khi đầy |
+
+## Preview taxonomy
+
+Bốn miền “preview” khác nhau — dùng shared admin primitives, **không** gộp hover catalog với seek scrub:
+
+| Kind | Chỗ dùng | Component / state |
+|---|---|---|
+| `hoverCatalog` | Catalog poster hover | `HoverPreviewCard` + `MutedPreviewPlayer` |
+| `seekScrub` | Watch seek bar | `HlsPlayer` `scrubPreview` + `thumbs.vtt` |
+| `adminFile` | Chọn poster/video trước upload | `AdminFilePreview` + `useObjectUrl` |
+| `adminImport` | Bulk episodes trước import | `AdminImportPreview` |
 
 Job chưa xong được **resume** khi API khởi động lại (`queued` / `encoding`).
 

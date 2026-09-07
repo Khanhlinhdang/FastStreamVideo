@@ -1,4 +1,11 @@
-import { apiFetch, apiFetchSafe, buildQuery } from './client'
+import {
+  ApiError,
+  apiFetch,
+  apiFetchSafe,
+  buildQuery,
+  getAccessToken,
+  tryRefresh,
+} from './client'
 import type {
   AdminEpisodeInput,
   AdminGenreInput,
@@ -363,7 +370,7 @@ export const api = {
   },
 
   adminCreateSeries: (body: AdminSeriesInput) =>
-    apiFetch<Series>('/api/admin/series', {
+    apiFetch<Series & { movieEpisodeId?: string | number }>('/api/admin/series', {
       method: 'POST',
       auth: true,
       body: {
@@ -444,6 +451,18 @@ export const api = {
         ...body,
         seriesId: body.seriesId != null ? toNum(body.seriesId) : undefined,
         number: body.number != null ? toNum(body.number) : undefined,
+        introEndSec:
+          body.introEndSec === undefined
+            ? undefined
+            : body.introEndSec == null
+              ? null
+              : toNum(body.introEndSec),
+        creditsStartSec:
+          body.creditsStartSec === undefined
+            ? undefined
+            : body.creditsStartSec == null
+              ? null
+              : toNum(body.creditsStartSec),
       },
     }),
 
@@ -453,13 +472,129 @@ export const api = {
       auth: true,
     }),
 
-  adminUpload: async (episodeId: string, file: File) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    const res = await apiFetch<{ jobId: string | number; job?: EncodeJob; ok?: boolean }>(
-      `/api/admin/episodes/${encodeURIComponent(episodeId)}/upload`,
-      { method: 'POST', auth: true, formData: fd },
+  /**
+   * Upload video — uses chunked resumable API for files ≥2MB (byte progress + no gateway timeout).
+   * Smaller files still use single multipart for speed.
+   */
+  adminUpload: async (
+    episodeId: string,
+    file: File,
+    onProgress?: (p: { loaded: number; total: number; percent: number; phase: string }) => void,
+  ) => {
+    const CHUNK_THRESHOLD = 2 * 1024 * 1024
+    const CHUNK_SIZE = 4 * 1024 * 1024
+    const total = file.size || 1
+
+    const report = (loaded: number, phase: string) => {
+      onProgress?.({
+        loaded,
+        total,
+        percent: Math.min(100, Math.round((loaded / total) * 100)),
+        phase,
+      })
+    }
+
+    async function authFetch(path: string, init: RequestInit): Promise<Response> {
+      let token = getAccessToken()
+      const headers = new Headers(init.headers)
+      if (token) headers.set('Authorization', `Bearer ${token}`)
+      let res = await fetch(path, { ...init, headers, credentials: 'include' })
+      if (res.status === 401) {
+        token = await tryRefresh()
+        if (token) {
+          headers.set('Authorization', `Bearer ${token}`)
+          res = await fetch(path, { ...init, headers, credentials: 'include' })
+        }
+      }
+      return res
+    }
+
+    if (file.size < CHUNK_THRESHOLD) {
+      report(0, 'upload')
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await apiFetch<{ jobId: string | number; job?: EncodeJob; ok?: boolean }>(
+        `/api/admin/episodes/${encodeURIComponent(episodeId)}/upload`,
+        { method: 'POST', auth: true, formData: fd },
+      )
+      report(total, 'done')
+      return {
+        jobId: asId(res.jobId),
+        job: res.job ? mapEncodeJob(res.job as unknown as Record<string, unknown>) ?? undefined : undefined,
+      }
+    }
+
+    report(0, 'init')
+    const initRes = await authFetch(
+      `/api/admin/episodes/${encodeURIComponent(episodeId)}/upload/init`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, size: file.size }),
+      },
     )
+    if (!initRes.ok) {
+      const errBody = await initRes.json().catch(() => ({}))
+      throw new ApiError(
+        typeof (errBody as { error?: string }).error === 'string'
+          ? (errBody as { error: string }).error
+          : `Upload init failed (${initRes.status})`,
+        initRes.status,
+        errBody,
+      )
+    }
+    const { uploadId } = (await initRes.json()) as { uploadId: string }
+
+    let loaded = 0
+    let part = 0
+    while (loaded < file.size) {
+      const end = Math.min(loaded + CHUNK_SIZE, file.size)
+      const blob = file.slice(loaded, end)
+      report(loaded, 'parts')
+      const putRes = await authFetch(
+        `/api/admin/episodes/${encodeURIComponent(episodeId)}/upload/${encodeURIComponent(uploadId)}/${part}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: blob,
+        },
+      )
+      if (!putRes.ok) {
+        const errBody = await putRes.json().catch(() => ({}))
+        throw new ApiError(
+          typeof (errBody as { error?: string }).error === 'string'
+            ? (errBody as { error: string }).error
+            : `Upload part ${part} failed (${putRes.status})`,
+          putRes.status,
+          errBody,
+        )
+      }
+      loaded = end
+      part += 1
+      report(loaded, 'parts')
+    }
+
+    report(total, 'complete')
+    const doneRes = await authFetch(
+      `/api/admin/episodes/${encodeURIComponent(episodeId)}/upload/${encodeURIComponent(uploadId)}/complete`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+    )
+    if (!doneRes.ok) {
+      const errBody = await doneRes.json().catch(() => ({}))
+      throw new ApiError(
+        typeof (errBody as { error?: string }).error === 'string'
+          ? (errBody as { error: string }).error
+          : `Upload complete failed (${doneRes.status})`,
+        doneRes.status,
+        errBody,
+      )
+    }
+    const res = (await doneRes.json()) as {
+      jobId: string | number
+      job?: EncodeJob
+      ok?: boolean
+    }
+    report(total, 'done')
     return {
       jobId: asId(res.jobId),
       job: res.job ? mapEncodeJob(res.job as unknown as Record<string, unknown>) ?? undefined : undefined,

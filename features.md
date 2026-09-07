@@ -18,6 +18,17 @@ UI tiếng Việt; thương hiệu **LiveStream** (bố cục lấy cảm hứng
 
 UI: hero hot, poster grid, badge tập / chất lượng / audio, tabs lịch theo weekday, ranking list.
 
+### Preview taxonomy (4 miền — không gộp component)
+
+| Kind | UI | Mô tả |
+|---|---|---|
+| `hoverCatalog` | Poster hover → `HoverPreviewCard` + `MutedPreviewPlayer` | Xem trước muted HLS/trailer |
+| `seekScrub` | `HlsPlayer` seek bar | Sprite `thumbs.vtt` khi tua |
+| `adminFile` | Admin Series / Episodes | Object-URL ảnh/video trước upload |
+| `adminImport` | Admin Episodes bulk | Bảng metadata trước import hàng loạt |
+
+Nguồn type: `web/src/lib/preview/kinds.ts`.
+
 ## Watch (phát video)
 
 | Tính năng | Chi tiết |
@@ -31,7 +42,7 @@ UI: hero hot, poster grid, badge tập / chất lượng / audio, tabs lịch th
 | Multi-audio | Encode đa track / gắn audio phụ → selector **Âm thanh** (hls.js) |
 | Equalizer | Panel **Equalizer** 10-band (Web Audio + spectrum) — Rạp chiếu / Bass / Thoại / Custom, Q, preamp; `localStorage`; xem [`docs/AUDIO_EQUALIZER.md`](./docs/AUDIO_EQUALIZER.md) |
 | Player chrome | Phím Space/J/K/F/←/→, Theater, PiP |
-| Thumbnail scrub | Seek bar custom + hover preview từ `thumbs.vtt` / sprite |
+| Thumbnail scrub | Seek bar custom + **seek scrub preview** từ `thumbs.vtt` / sprite (`scrubPreview` trong `HlsPlayer`) |
 | Nguồn phát | Ưu tiên `episode.playbackUrl` (R2 absolute khi `hlsStorage=r2`; optional signed `SIGNED_MEDIA` chỉ local — giữ `0` với CF cache); fallback `/media/hls/<id>/master.m3u8` |
 | Resume | `startPosition` từ history; LWW `clientUpdatedAt`; offline-friendly flush |
 | Prefetch tập sau | Khi còn <60s cuối (trừ saveData / mạng chậm): prefetch `master.m3u8` tập kế |
@@ -66,8 +77,8 @@ UI: hero hot, poster grid, badge tập / chất lượng / audio, tabs lịch th
 | UI | Chức năng |
 |---|---|
 | `/admin` | Tổng quan + encode gần đây (**Retry/Xóa**), QoE; disk/purge **admin only** |
-| `/admin/series` | CRUD + **poster preview** trước upload |
-| `/admin/episodes` | Upload/replace; **bulk**; phụ đề VTT/SRT + audio phụ UI |
+| `/admin/series` | CRUD + **admin file preview** (poster ảnh / video phim lẻ) trước upload |
+| `/admin/episodes` | Upload/replace; **bulk import preview** (metadata); file preview đơn; phụ đề VTT/SRT + audio phụ UI |
 | `/admin/comments` | Duyệt bình luận gắn cờ (ẩn / bỏ ẩn / xóa) |
 | `/admin/schedule` | CRUD lịch chiếu |
 | `/admin/genres` | CRUD thể loại |

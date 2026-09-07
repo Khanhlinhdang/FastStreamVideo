@@ -22,7 +22,14 @@ import {
 } from '../lib/audioEqualizer'
 import './HlsPlayer.css'
 
-const QUALITY_STORAGE_KEY = 'livestream.hls.quality'
+import {
+  readAudioPref,
+  readQualityPref,
+  readSubtitlePref,
+  writeAudioPref,
+  writeQualityPref,
+  writeSubtitlePref,
+} from '../lib/playerPrefs'
 
 type SubtitleTrack = {
   id?: number | string
@@ -67,6 +74,9 @@ type Props = {
   onEnded?: () => void
   /** Fired once when playback actually starts (first playing event) */
   onPlayStart?: () => void
+  /** Skip-intro window end (seconds from start); button shown while currentTime < this */
+  introEndSec?: number | null
+  creditsStartSec?: number | null
   theater?: boolean
   onTheaterChange?: (on: boolean) => void
 }
@@ -99,19 +109,11 @@ function labelForHeight(h: number): string {
 }
 
 function readStoredQuality(): string {
-  try {
-    return localStorage.getItem(QUALITY_STORAGE_KEY) || 'auto'
-  } catch {
-    return 'auto'
-  }
+  return readQualityPref()
 }
 
 function writeStoredQuality(value: string): void {
-  try {
-    localStorage.setItem(QUALITY_STORAGE_KEY, value)
-  } catch {
-    /* ignore */
-  }
+  writeQualityPref(value)
 }
 
 type NetworkInformationLike = {
@@ -139,11 +141,11 @@ function isSlowConnection(): boolean {
 function abrMaxBitrateForConnection(): number | undefined {
   const c = getConnection()
   if (!c) return undefined
-  if (c.saveData) return 800_000
+  if (c.saveData) return 600_000
   const t = c.effectiveType
-  if (t === 'slow-2g' || t === '2g') return 600_000
-  if (t === '3g') return 1_800_000
-  if (typeof c.downlink === 'number' && c.downlink > 0 && c.downlink < 1.5) return 2_500_000
+  if (t === 'slow-2g' || t === '2g') return 500_000
+  if (t === '3g') return 1_200_000
+  if (typeof c.downlink === 'number' && c.downlink > 0 && c.downlink < 1.5) return 2_000_000
   return undefined
 }
 
@@ -151,10 +153,10 @@ function abrMaxBitrateForConnection(): number | undefined {
 function autoLevelCapHeight(): number | undefined {
   const c = getConnection()
   if (!c) return undefined
-  if (c.saveData) return 480
+  if (c.saveData) return 360
   const t = c.effectiveType
-  if (t === 'slow-2g' || t === '2g') return 480
-  if (t === '3g') return 720
+  if (t === 'slow-2g' || t === '2g') return 360
+  if (t === '3g') return 480
   return undefined
 }
 
@@ -169,6 +171,37 @@ function pickStartLevel(levels: { height?: number }[]): number {
   }
   const prefer = withH.find((x) => x.h >= 720) ?? withH[withH.length - 1]
   return prefer?.i ?? levels.length - 1
+}
+
+function bufferedAheadSec(video: HTMLVideoElement): number {
+  try {
+    const t = video.currentTime
+    const b = video.buffered
+    for (let i = 0; i < b.length; i++) {
+      if (t >= b.start(i) && t <= b.end(i)) return b.end(i) - t
+    }
+  } catch {
+    /* ignore */
+  }
+  return 0
+}
+
+function hlsConfigForConnection(): Partial<Hls['config']> {
+  const slow = isSlowConnection()
+  return {
+    enableWorker: true,
+    lowLatencyMode: false,
+    maxBufferLength: slow ? 30 : 60,
+    maxMaxBufferLength: slow ? 60 : 120,
+    abrEwmaDefaultEstimate: slow ? 400_000 : 1_800_000,
+    abrBandWidthFactor: slow ? 0.8 : 0.95,
+    abrBandWidthUpFactor: slow ? 0.5 : 0.7,
+    startLevel: slow ? 0 : -1,
+    capLevelToPlayerSize: true,
+    ...(abrMaxBitrateForConnection() != null
+      ? { abrMaxBitrate: abrMaxBitrateForConnection() }
+      : {}),
+  }
 }
 
 function postPlaybackEvent(body: {
@@ -251,6 +284,8 @@ export function HlsPlayer({
   onProgress,
   onEnded,
   onPlayStart,
+  introEndSec = null,
+  creditsStartSec = null,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -263,15 +298,20 @@ export function HlsPlayer({
   const [ready, setReady] = useState(false)
   const [levels, setLevels] = useState<QualityOption[]>([])
   const [quality, setQuality] = useState<string>(() => readStoredQuality())
-  const [subOn, setSubOn] = useState(true)
-  const [subIndex, setSubIndex] = useState(0)
+  const [subOn, setSubOn] = useState(() => readSubtitlePref().mode !== 'off')
+  const [subIndex, setSubIndex] = useState(() => {
+    const p = readSubtitlePref()
+    return p.mode === 'on' && typeof p.index === 'number' ? p.index : 0
+  })
   const [theater, setTheater] = useState(false)
-  const [audioIndex, setAudioIndex] = useState(0)
+  const [audioIndex, setAudioIndex] = useState(() => readAudioPref().index ?? 0)
+  const [showSkipIntro, setShowSkipIntro] = useState(false)
+  const [showSkipCredits, setShowSkipCredits] = useState(false)
   const [hlsAudioTracks, setHlsAudioTracks] = useState<Array<{ id: number; name: string }>>([])
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [thumbCues, setThumbCues] = useState<ThumbCue[]>([])
-  const [hoverPreview, setHoverPreview] = useState<{
+  const [scrubPreview, setScrubPreview] = useState<{
     sec: number
     cue: ThumbCue
     leftPct: number
@@ -411,20 +451,7 @@ export function HlsPlayer({
     }
 
     if (Hls.isSupported()) {
-      hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        // Larger forward buffer (~Netflix-style reservoir) for VOD stall resilience
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
-        // Slightly conservative default so Auto does not overshoot on weak links
-        abrEwmaDefaultEstimate: 1_800_000,
-        abrBandWidthFactor: 0.95,
-        abrBandWidthUpFactor: 0.7,
-        ...(abrMaxBitrateForConnection() != null
-          ? { abrMaxBitrate: abrMaxBitrateForConnection() }
-          : {}),
-      })
+      hls = new Hls(hlsConfigForConnection())
       hlsRef.current = hls
       hls.loadSource(activeSrc)
       hls.attachMedia(video)
@@ -472,8 +499,18 @@ export function HlsPlayer({
         }))
         setHlsAudioTracks(audios)
         if (audios.length > 0) {
-          hls!.audioTrack = 0
-          setAudioIndex(0)
+          const ap = readAudioPref()
+          let idx = 0
+          if (typeof ap.index === 'number' && ap.index >= 0 && ap.index < audios.length) {
+            idx = ap.index
+          } else if (ap.lang) {
+            const byLang = (hls!.audioTracks ?? []).findIndex(
+              (t) => (t.lang || '').toLowerCase() === ap.lang!.toLowerCase(),
+            )
+            if (byLang >= 0) idx = byLang
+          }
+          hls!.audioTrack = idx
+          setAudioIndex(idx)
         }
 
         if (startPosition > 0 && !startedRef.current) {
@@ -504,6 +541,18 @@ export function HlsPlayer({
           }
         }
       })
+      // Slow-net defense: when buffer collapses under Auto, step down immediately
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        const instance = hlsRef.current
+        const vid = videoRef.current
+        if (!instance || !vid || readStoredQuality() !== 'auto') return
+        const ahead = bufferedAheadSec(vid)
+        if (ahead > 0 && ahead < 2.5 && instance.currentLevel > 0) {
+          const next = Math.max(0, instance.currentLevel - 1)
+          instance.nextLevel = next
+          instance.loadLevel = next
+        }
+      })
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
         const audios = (hls!.audioTracks ?? []).map((t, i) => ({
           id: i,
@@ -512,6 +561,14 @@ export function HlsPlayer({
         setHlsAudioTracks(audios)
       })
       hls.on(Hls.Events.ERROR, (_e, data) => {
+        if (data.details === 'bufferStalledError' && readStoredQuality() === 'auto') {
+          const instance = hlsRef.current
+          if (instance && instance.currentLevel > 0) {
+            const next = Math.max(0, instance.currentLevel - 1)
+            instance.nextLevel = next
+            instance.loadLevel = next
+          }
+        }
         if (!data.fatal) return
         const instance = hlsRef.current
         if (Number.isFinite(episodeIdNum) && episodeIdNum > 0) {
@@ -642,6 +699,17 @@ export function HlsPlayer({
     const onTime = () => {
       setCurrentTime(video.currentTime)
       if (Number.isFinite(video.duration)) setDuration(video.duration)
+      const t = video.currentTime
+      if (introEndSec != null && introEndSec > 0) {
+        setShowSkipIntro(t >= 1 && t < introEndSec)
+      } else {
+        setShowSkipIntro(false)
+      }
+      if (creditsStartSec != null && creditsStartSec > 0 && Number.isFinite(video.duration)) {
+        setShowSkipCredits(t >= creditsStartSec && t < video.duration - 1)
+      } else {
+        setShowSkipCredits(false)
+      }
       if (!onProgress || !Number.isFinite(video.duration)) return
       onProgress(video.currentTime, video.duration, { reason: 'timeupdate' })
     }
@@ -713,7 +781,7 @@ export function HlsPlayer({
       video.removeEventListener('canplay', onPlayingOrCanPlay)
       video.removeEventListener('loadedmetadata', onMeta)
     }
-  }, [onProgress, onEnded, onPlayStart, episodeIdNum, eqSupported, eqPreset, ensureEq])
+  }, [onProgress, onEnded, onPlayStart, episodeIdNum, eqSupported, eqPreset, ensureEq, introEndSec, creditsStartSec])
 
   useEffect(() => {
     const video = videoRef.current
@@ -845,6 +913,11 @@ export function HlsPlayer({
     const idx = Number(value)
     setAudioIndex(idx)
     const hls = hlsRef.current
+    const lang =
+      hls?.audioTracks?.[idx]?.lang ||
+      audioTracksProp.find((t) => t.index === idx)?.lang ||
+      selectableAudio.find((t) => t.value === value)?.label
+    writeAudioPref({ index: idx, lang: lang || undefined })
     if (hls && hls.audioTracks.length > 0) {
       hls.audioTrack = idx
     }
@@ -923,7 +996,7 @@ export function HlsPlayer({
   function onSeekHover(clientX: number) {
     const el = seekRef.current
     if (!el || !duration || thumbCues.length === 0) {
-      setHoverPreview(null)
+      setScrubPreview(null)
       return
     }
     const rect = el.getBoundingClientRect()
@@ -934,60 +1007,98 @@ export function HlsPlayer({
       thumbCues.reduce((a, b) =>
         Math.abs(b.start - sec) < Math.abs(a.start - sec) ? b : a,
       )
-    setHoverPreview({ sec, cue, leftPct: pct * 100 })
+    setScrubPreview({ sec, cue, leftPct: pct * 100 })
   }
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0
   const displayGains = gainsForPreset(eqPreset, eqCustom)
 
+  function skipIntro() {
+    const video = videoRef.current
+    if (!video || introEndSec == null) return
+    video.currentTime = introEndSec
+    setShowSkipIntro(false)
+  }
+
+  function skipCredits() {
+    const video = videoRef.current
+    if (!video || !Number.isFinite(video.duration)) return
+    video.currentTime = Math.max(0, video.duration - 0.5)
+    setShowSkipCredits(false)
+  }
+
   return (
     <div className={`hls-player${theater ? ' hls-player--theater' : ''}`} tabIndex={0}>
-      <video
-        ref={videoRef}
-        className="hls-player__video"
-        controls
-        playsInline
-        crossOrigin="anonymous"
-        poster={poster}
-        preload="metadata"
-      >
-        {subtitles.map((t, i) => (
-          <track
-            key={t.id ?? t.url}
-            kind="subtitles"
-            src={t.url}
-            srcLang={t.lang}
-            label={t.label}
-            default={subOn && i === subIndex}
-          />
-        ))}
-      </video>
+      <div className="hls-player__stage">
+        <video
+          ref={videoRef}
+          className="hls-player__video"
+          controls
+          playsInline
+          crossOrigin="anonymous"
+          poster={poster}
+          preload="metadata"
+        >
+          {subtitles.map((t, i) => (
+            <track
+              key={t.id ?? t.url}
+              kind="subtitles"
+              src={t.url}
+              srcLang={t.lang}
+              label={t.label}
+              default={subOn && i === subIndex}
+            />
+          ))}
+        </video>
 
-      {slowBuffer ? (
-        <div className="hls-player__slow">
-          <p>Mạng chậm — đang đệm…</p>
+        {showSkipIntro && (
           <button
             type="button"
-            className="btn btn-sm btn-primary"
-            onClick={() => {
-              const v = videoRef.current
-              const h = hlsRef.current
-              if (h) h.startLoad()
-              else if (v) {
-                v.load()
-                void v.play()
-              }
-              setSlowBuffer(false)
-            }}
+            className="btn btn-primary hls-player__skip"
+            onClick={skipIntro}
           >
-            Tải lại nguồn
+            Bỏ qua giới thiệu
           </button>
-        </div>
-      ) : null}
+        )}
+        {showSkipCredits && (
+          <button
+            type="button"
+            className="btn btn-primary hls-player__skip"
+            onClick={skipCredits}
+          >
+            Bỏ qua credits
+          </button>
+        )}
 
-      {rotateHint ? (
-        <div className="hls-player__rotate">Xoay ngang để xem theater tốt hơn</div>
-      ) : null}
+        {slowBuffer ? (
+          <div className="hls-player__slow">
+            <p>Mạng chậm — đang đệm…</p>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                const v = videoRef.current
+                const h = hlsRef.current
+                if (h) h.startLoad()
+                else if (v) {
+                  v.load()
+                  void v.play()
+                }
+                setSlowBuffer(false)
+              }}
+            >
+              Tải lại nguồn
+            </button>
+          </div>
+        ) : null}
+
+        {rotateHint ? (
+          <div className="hls-player__rotate">Xoay ngang để xem theater tốt hơn</div>
+        ) : null}
+
+        {!ready && !error && <div className="hls-player__loading">Đang tải stream...</div>}
+        {error && <div className="hls-player__error">{error}</div>}
+      </div>
 
       <div className="hls-player__scrub">
         <div
@@ -1001,7 +1112,7 @@ export function HlsPlayer({
           tabIndex={0}
           onClick={(e) => seekFromClientX(e.clientX)}
           onMouseMove={(e) => onSeekHover(e.clientX)}
-          onMouseLeave={() => setHoverPreview(null)}
+          onMouseLeave={() => setScrubPreview(null)}
           onKeyDown={(e) => {
             const video = videoRef.current
             if (!video) return
@@ -1018,21 +1129,21 @@ export function HlsPlayer({
           <div className="hls-player__seek-track">
             <div className="hls-player__seek-fill" style={{ width: `${progressPct}%` }} />
           </div>
-          {hoverPreview && (
+          {scrubPreview && (
             <div
               className="hls-player__thumb-preview"
-              style={{ left: `${hoverPreview.leftPct}%` }}
+              style={{ left: `${scrubPreview.leftPct}%` }}
             >
               <div
                 className="hls-player__thumb-sprite"
                 style={{
-                  width: hoverPreview.cue.w,
-                  height: hoverPreview.cue.h,
-                  backgroundImage: `url(${hoverPreview.cue.src})`,
-                  backgroundPosition: `-${hoverPreview.cue.x}px -${hoverPreview.cue.y}px`,
+                  width: scrubPreview.cue.w,
+                  height: scrubPreview.cue.h,
+                  backgroundImage: `url(${scrubPreview.cue.src})`,
+                  backgroundPosition: `-${scrubPreview.cue.x}px -${scrubPreview.cue.y}px`,
                 }}
               />
-              <span>{formatClock(hoverPreview.sec)}</span>
+              <span>{formatClock(scrubPreview.sec)}</span>
             </div>
           )}
         </div>
@@ -1090,6 +1201,7 @@ export function HlsPlayer({
                 const vid = videoRef.current
                 if (v === 'off') {
                   setSubOn(false)
+                  writeSubtitlePref({ mode: 'off' })
                   if (vid) {
                     for (let i = 0; i < vid.textTracks.length; i++) {
                       vid.textTracks[i]!.mode = 'disabled'
@@ -1100,6 +1212,8 @@ export function HlsPlayer({
                 const idx = Number(v)
                 setSubOn(true)
                 setSubIndex(idx)
+                const lang = subtitles[idx]?.lang
+                writeSubtitlePref({ mode: 'on', index: idx, lang })
                 if (vid) {
                   for (let i = 0; i < vid.textTracks.length; i++) {
                     vid.textTracks[i]!.mode = i === idx ? 'showing' : 'disabled'
@@ -1268,9 +1382,6 @@ export function HlsPlayer({
           </p>
         </div>
       )}
-
-      {!ready && !error && <div className="hls-player__loading">Đang tải stream...</div>}
-      {error && <div className="hls-player__error">{error}</div>}
     </div>
   )
 }

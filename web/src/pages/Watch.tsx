@@ -6,8 +6,10 @@ import { getAccessToken } from '../api/client'
 import { Comments } from '../components/Comments'
 import { EmptyState, LoadingBlock } from '../components/EmptyState'
 import { HlsPlayer } from '../components/HlsPlayer'
+import { PosterRow } from '../components/PosterRow'
 import { useAuth } from '../context/AuthContext'
 import { encodeStatusLabel, placeholderPoster } from '../lib/format'
+import { prefetchHlsWarm, shouldSkipHeavyPrefetch } from '../lib/prefetchHls'
 import './Watch.css'
 
 type NetworkInformationLike = {
@@ -39,6 +41,7 @@ export function WatchPage() {
   const { isAuthenticated } = useAuth()
   const [series, setSeries] = useState<Series | null>(null)
   const [episodes, setEpisodes] = useState<Episode[]>([])
+  const [related, setRelated] = useState<Series[]>([])
   const [loading, setLoading] = useState(true)
   const [startPosition, setStartPosition] = useState(0)
   const lastSaved = useRef(0)
@@ -50,10 +53,11 @@ export function WatchPage() {
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const [s, eps, history] = await Promise.all([
+      const [s, eps, history, rel] = await Promise.all([
         api.seriesBySlug(slug),
         api.episodes(slug),
         isAuthenticated ? api.history() : Promise.resolve([]),
+        api.related(slug).catch(() => [] as Series[]),
       ])
       if (cancelled) return
       const sorted = eps.sort((a, b) => {
@@ -64,6 +68,7 @@ export function WatchPage() {
       })
       setSeries(s)
       setEpisodes(sorted)
+      setRelated(rel.filter((r) => r.slug !== slug))
       const current = sorted.find((e) => e.number === epNum)
       if (tParam > 0) {
         setStartPosition(tParam)
@@ -96,6 +101,12 @@ export function WatchPage() {
       ? mediaUrl(episode.id)
       : '')
 
+  // Prefetch first segment as soon as we know the playback URL
+  useEffect(() => {
+    if (!streamSrc || shouldSkipHeavyPrefetch()) return
+    void prefetchHlsWarm(streamSrc)
+  }, [streamSrc])
+
   const flushHistory = useCallback(
     (positionSec: number) => {
       if (!isAuthenticated || !episodeRef.current) return
@@ -114,7 +125,7 @@ export function WatchPage() {
     ) => {
       lastPos.current = { positionSec, durationSec }
 
-      // Prefetch next episode master near end (bandwidth-guarded)
+      // Prefetch next episode master + first segment near end
       if (
         next &&
         durationSec > 0 &&
@@ -127,15 +138,7 @@ export function WatchPage() {
           (next.statusEncode === 'ready' || next.hlsPath ? mediaUrl(next.id) : '')
         if (nextUrl) {
           prefetchedNext.current = String(next.id)
-          const link = document.createElement('link')
-          link.rel = 'prefetch'
-          link.as = 'fetch'
-          link.href = nextUrl
-          link.crossOrigin = 'anonymous'
-          document.head.appendChild(link)
-          void fetch(nextUrl, { credentials: 'include' }).catch(() => {
-            /* ignore */
-          })
+          void prefetchHlsWarm(nextUrl)
         }
       }
 
@@ -148,7 +151,6 @@ export function WatchPage() {
     [isAuthenticated, episode, flushHistory, next],
   )
 
-  // Flush progress on tab close (PUT + keepalive; sendBeacon cannot PUT)
   useEffect(() => {
     if (!isAuthenticated) return
     const persist = () => {
@@ -192,7 +194,6 @@ export function WatchPage() {
     void api.recordView(episode.id)
   }, [episode])
 
-  // Reset prefetch marker when episode changes
   useEffect(() => {
     prefetchedNext.current = null
     lastPos.current = { positionSec: 0, durationSec: 0 }
@@ -235,6 +236,8 @@ export function WatchPage() {
             subtitles={episode.subtitles ?? []}
             audioTracks={episode.audioTracks ?? []}
             thumbsVttUrl={episode.thumbsVttUrl}
+            introEndSec={episode.introEndSec}
+            creditsStartSec={episode.creditsStartSec}
             onProgress={onProgress}
             onPlayStart={onPlayStart}
           />
@@ -313,6 +316,10 @@ export function WatchPage() {
           ))}
         </div>
       </section>
+
+      {related.length > 0 && (
+        <PosterRow title="Vì bạn đang xem — cùng thể loại" items={related} />
+      )}
 
       <Comments episodeId={episode.id} />
     </div>

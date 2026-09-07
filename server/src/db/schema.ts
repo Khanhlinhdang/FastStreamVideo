@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS episodes (
   hlsStorage TEXT NOT NULL DEFAULT 'local' CHECK(hlsStorage IN ('local', 'r2')),
   sourcePath TEXT,
   viewCount INTEGER NOT NULL DEFAULT 0,
+  introEndSec INTEGER,
+  creditsStartSec INTEGER,
   deletedAt TEXT,
   createdAt TEXT NOT NULL DEFAULT (datetime('now')),
   updatedAt TEXT NOT NULL DEFAULT (datetime('now')),

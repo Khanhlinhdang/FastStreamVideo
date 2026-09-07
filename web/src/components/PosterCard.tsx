@@ -13,6 +13,7 @@ import {
   type HoverPreviewTransform,
 } from '../lib/hoverPreview'
 import { resolveHoverPreviewMeta } from '../lib/resolveHoverPreview'
+import { prefetchHlsWarm, shouldSkipHeavyPrefetch } from '../lib/prefetchHls'
 import { EpisodeBadge } from './EpisodeBadge'
 import { HoverPreviewCard, type HoverPreviewMeta } from './HoverPreviewCard'
 import './PosterCard.css'
@@ -88,6 +89,9 @@ export function PosterCard({ series, showLatest = true, compact }: Props) {
       const resolved = await resolveHoverPreviewMeta(series.slug)
       if (openGenRef.current !== gen) return
       setMeta(resolved)
+      if (resolved.previewUrl && !shouldSkipHeavyPrefetch()) {
+        void prefetchHlsWarm(resolved.previewUrl)
+      }
       if (isAuthenticated) {
         try {
           const favorites = await api.favorites()
@@ -109,6 +113,18 @@ export function PosterCard({ series, showLatest = true, compact }: Props) {
     }
   }, [clearOpenTimer, isAuthenticated, previewKey, series.id, series.slug])
 
+  const recomputeTransform = useCallback(() => {
+    const wrap = rootRef.current
+    const media = wrap?.querySelector('.poster-card__media') as HTMLElement | null
+    if (!wrap || !media) return
+    setTransform(
+      computeHoverPreviewTransform(
+        media.getBoundingClientRect(),
+        wrap.getBoundingClientRect(),
+      ),
+    )
+  }, [])
+
   const scheduleOpen = useCallback(() => {
     if (!canUseHoverPreview()) return
     clearOpenTimer()
@@ -124,13 +140,16 @@ export function PosterCard({ series, showLatest = true, compact }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closePreview()
     }
+    const onResize = () => recomputeTransform()
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onResize)
     }
-  }, [open, closePreview])
+  }, [open, closePreview, recomputeTransform])
 
   useEffect(() => {
     return () => {

@@ -66,7 +66,12 @@ export function HoverPreviewCard({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <div className="hover-preview__media">
+      <Link
+        to={watchTo}
+        className="hover-preview__media"
+        aria-label={`Xem ngay ${series.title}`}
+        tabIndex={-1}
+      >
         <img
           className="hover-preview__poster"
           src={poster}
@@ -85,10 +90,12 @@ export function HoverPreviewCard({
           />
         ) : null}
         <div className="hover-preview__media-fade" />
-      </div>
+      </Link>
 
       <div className="hover-preview__chrome">
-        <h3 className="hover-preview__title">{series.title}</h3>
+        <Link to={watchTo} className="hover-preview__title-link">
+          <h3 className="hover-preview__title">{series.title}</h3>
+        </Link>
 
         <div className="hover-preview__badges">
           <span className="badge badge-teal">{isMovie ? 'Phim lẻ' : 'Phim bộ'}</span>
@@ -102,6 +109,9 @@ export function HoverPreviewCard({
           <span className="badge badge-muted">{statusLabel(series.status)}</span>
           {series.year ? <span className="badge badge-muted">{series.year}</span> : null}
           {meta.isTrailer ? <span className="badge badge-warn">Trailer</span> : null}
+          {meta.isTrailer && meta.trailerUrl && !meta.previewUrl ? (
+            <span className="badge badge-muted">YouTube (mở link)</span>
+          ) : null}
         </div>
 
         {(genres.length > 0 || series.viewCount > 0) && (

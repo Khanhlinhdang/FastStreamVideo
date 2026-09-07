@@ -23,6 +23,7 @@ import { AdminLayout } from './pages/admin/AdminLayout'
 import { AdminDashboardPage } from './pages/admin/AdminDashboard'
 import { AdminSeriesPage } from './pages/admin/AdminSeries'
 import { AdminEpisodesPage } from './pages/admin/AdminEpisodes'
+import { AdminWizardPage } from './pages/admin/AdminWizard'
 import { AdminSchedulePage } from './pages/admin/AdminSchedule'
 import { AdminGenresPage } from './pages/admin/AdminGenres'
 import { AdminCommentsPage } from './pages/admin/AdminComments'
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="lich-su" element={<HistoryPage />} />
             <Route path="admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboardPage />} />
+              <Route path="wizard" element={<AdminWizardPage />} />
               <Route path="series" element={<AdminSeriesPage />} />
               <Route path="episodes" element={<AdminEpisodesPage />} />
               <Route path="schedule" element={<AdminSchedulePage />} />

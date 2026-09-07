@@ -33,16 +33,61 @@ export const HOVER_PREVIEW_CLOSE_DELAY_MS = 0
 export const HOVER_PREVIEW_ASPECT = 16 / 9
 
 /**
- * Horizontal span vs poster media width W:
- * full center poster + half left neighbor + half right neighbor = 2W.
+ * Fallback when `.site-top` is missing — matches CSS
+ * `--header-h` (64) + `--search-bar-h` (52).
  */
-export const HOVER_PREVIEW_WIDTH_SCALE = 2
-/**
- * Vertical span vs poster media height H:
- * H/4 above + H + H/4 below = 1.5H.
- */
-export const HOVER_PREVIEW_HEIGHT_SCALE = 1.5
+export const HOVER_PREVIEW_TOP_SAFE_FALLBACK_PX = 116
+
+/** @deprecated Use getHoverPreviewTopSafePx() — sticky header alone is not enough. */
+export const HOVER_PREVIEW_TOP_SAFE_PX = HOVER_PREVIEW_TOP_SAFE_FALLBACK_PX
+
 export const HOVER_PREVIEW_EDGE_MARGIN_PX = 12
+
+/**
+ * Bottom edge of the sticky header+search (`.site-top`) in viewport coords.
+ * Preview must sit fully below this (or paint above it via z-index).
+ */
+export function getHoverPreviewTopSafePx(): number {
+  if (typeof document === 'undefined') return HOVER_PREVIEW_TOP_SAFE_FALLBACK_PX
+  const el = document.querySelector('.site-top') as HTMLElement | null
+  if (el) {
+    const bottom = el.getBoundingClientRect().bottom
+    if (Number.isFinite(bottom) && bottom > 0) return Math.ceil(bottom)
+  }
+  return HOVER_PREVIEW_TOP_SAFE_FALLBACK_PX
+}
+
+/**
+ * Base scales vs poster media size (W×H). Slightly under “full neighbor span”
+ * so the card feels compact while still reading as a hover expand.
+ */
+export type HoverPreviewScales = {
+  widthScale: number
+  heightScale: number
+  /** Hard cap as fraction of viewport width */
+  maxVw: number
+  /** Hard cap as fraction of viewport height (below sticky header) */
+  maxVh: number
+}
+
+/** Responsive scales — narrower viewports get a gentler expand. */
+export function hoverPreviewScalesForViewport(vw: number): HoverPreviewScales {
+  if (vw < 768) {
+    return { widthScale: 1.42, heightScale: 1.18, maxVw: 0.72, maxVh: 0.48 }
+  }
+  if (vw < 1024) {
+    return { widthScale: 1.52, heightScale: 1.22, maxVw: 0.48, maxVh: 0.52 }
+  }
+  if (vw < 1440) {
+    return { widthScale: 1.58, heightScale: 1.25, maxVw: 0.36, maxVh: 0.55 }
+  }
+  return { widthScale: 1.62, heightScale: 1.28, maxVw: 0.32, maxVh: 0.55 }
+}
+
+/** @deprecated Prefer hoverPreviewScalesForViewport — kept for callers/tests. */
+export const HOVER_PREVIEW_WIDTH_SCALE = 1.58
+/** @deprecated Prefer hoverPreviewScalesForViewport */
+export const HOVER_PREVIEW_HEIGHT_SCALE = 1.25
 
 export type HoverPreviewTransform = {
   width: number
@@ -56,26 +101,36 @@ export type HoverPreviewTransform = {
 /**
  * Size the hover preview from the poster media box and keep it on-screen.
  *
- * Formula (W = media width, H = media height):
- *   width  = 2W   (extends W/2 past each side — half of each neighbor)
- *   height = 1.5H (extends H/4 past top and bottom)
- * Ideal offsets center the frame on the media; edge clamping only shifts
- * position (size stays 2W × 1.5H) when near viewport edges.
- * Video inside stays 16:9 with object-fit: cover.
+ * 1. Start from responsive scales of media W×H (≈1.4–1.6×W, ≈1.2–1.3×H).
+ * 2. Uniformly shrink if needed to fit the area below sticky `.site-top` (header+search).
+ * 3. Clamp position so the frame stays fully below `.site-top` and inside the viewport.
  */
 export function computeHoverPreviewTransform(
   mediaRect: DOMRect,
   wrapRect: DOMRect,
+  viewport?: { width: number; height: number; topSafe?: number },
 ): HoverPreviewTransform {
   const mediaW = Math.max(1, mediaRect.width)
   const mediaH = Math.max(1, mediaRect.height)
-  const width = mediaW * HOVER_PREVIEW_WIDTH_SCALE
-  const height = mediaH * HOVER_PREVIEW_HEIGHT_SCALE
+  const vw = viewport?.width ?? window.innerWidth
+  const vh = viewport?.height ?? window.innerHeight
+  const scales = hoverPreviewScalesForViewport(vw)
   const margin = HOVER_PREVIEW_EDGE_MARGIN_PX
-  const vw = window.innerWidth
-  const vh = window.innerHeight
+  const topSafe =
+    viewport?.topSafe ??
+    (typeof document !== 'undefined' ? getHoverPreviewTopSafePx() : HOVER_PREVIEW_TOP_SAFE_FALLBACK_PX)
 
-  // Ideal: center on the poster media within the wrap (±W/2, ±H/4).
+  let width = mediaW * scales.widthScale
+  let height = mediaH * scales.heightScale
+
+  const availH = Math.max(120, vh - topSafe - margin * 2)
+  const maxW = Math.min(vw - margin * 2, vw * scales.maxVw)
+  const maxH = Math.min(availH, vh * scales.maxVh)
+  const fit = Math.min(1, maxW / width, maxH / height)
+  width = Math.max(1, width * fit)
+  height = Math.max(1, height * fit)
+
+  // Ideal: center on the poster media within the wrap.
   let offsetX = mediaRect.left - wrapRect.left + (mediaW - width) / 2
   let offsetY = mediaRect.top - wrapRect.top + (mediaH - height) / 2
 
@@ -92,13 +147,34 @@ export function computeHoverPreviewTransform(
     viewLeft -= overflowRight
   }
 
-  if (viewTop < margin) {
-    offsetY += margin - viewTop
-    viewTop = margin
+  // Always keep the full preview below sticky header + search bar.
+  const minTop = topSafe + margin
+  if (viewTop < minTop) {
+    offsetY += minTop - viewTop
+    viewTop = minTop
   }
-  const overflowBottom = viewTop + height - (vh - margin)
+  let overflowBottom = viewTop + height - (vh - margin)
   if (overflowBottom > 0) {
-    offsetY -= overflowBottom
+    // Prefer shifting up, but never above minTop — shrink instead.
+    const canShiftUp = viewTop - minTop
+    const shift = Math.min(overflowBottom, Math.max(0, canShiftUp))
+    offsetY -= shift
+    viewTop -= shift
+    overflowBottom -= shift
+    if (overflowBottom > 0) {
+      const shrink = height - overflowBottom
+      if (shrink > 80) {
+        const ratio = shrink / height
+        width = Math.max(1, width * ratio)
+        height = Math.max(1, shrink)
+        // Re-center horizontally on media after shrink
+        offsetX = mediaRect.left - wrapRect.left + (mediaW - width) / 2
+        viewLeft = wrapRect.left + offsetX
+        if (viewLeft < margin) offsetX += margin - viewLeft
+        const rightOverflow = wrapRect.left + offsetX + width - (vw - margin)
+        if (rightOverflow > 0) offsetX -= rightOverflow
+      }
+    }
   }
 
   return { width, height, offsetX, offsetY }

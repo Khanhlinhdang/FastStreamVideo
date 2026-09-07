@@ -5,6 +5,7 @@ import './Admin.css'
 
 const NAV = [
   { to: '/admin', end: true, label: 'Tổng quan', adminOnly: false },
+  { to: '/admin/wizard', end: false, label: 'Wizard', adminOnly: false },
   { to: '/admin/series', end: false, label: 'Series', adminOnly: false },
   { to: '/admin/episodes', end: false, label: 'Episodes', adminOnly: false },
   { to: '/admin/comments', end: false, label: 'Bình luận', adminOnly: false },

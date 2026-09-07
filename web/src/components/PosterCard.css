@@ -4,6 +4,7 @@
 }
 
 .poster-card-wrap--preview {
+  /* Above sibling posters / next rows; stay under sticky .site-top (50) */
   z-index: 30;
 }
 
@@ -14,7 +15,7 @@
   top: var(--preview-y, 0);
   width: var(--preview-w, 100%);
   height: var(--preview-h, 100%);
-  z-index: 40;
+  z-index: 2;
   pointer-events: none;
 }
 

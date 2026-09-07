@@ -184,3 +184,78 @@
   background: rgba(255, 77, 109, 0.2);
   color: var(--danger);
 }
+
+.admin-file-preview {
+  margin-top: 0.5rem;
+}
+
+.admin-file-preview__media--image {
+  display: block;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.admin-file-preview__media--video {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  max-height: 240px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #000;
+}
+
+.admin-file-preview__fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.admin-file-preview__meta {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.admin-preview-panel {
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.admin-preview-panel__title {
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+}
+
+.admin-preview-panel__hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-bottom: 0.65rem;
+}
+
+.admin-preview-panel__actions {
+  margin-top: 0.75rem;
+}
+
+/* Legacy alias — prefer .admin-preview-panel */
+.bulk-preview {
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.bulk-preview h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+}

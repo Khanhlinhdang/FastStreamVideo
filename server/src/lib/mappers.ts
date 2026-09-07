@@ -47,6 +47,8 @@ export type EpisodeRow = {
   hlsStorage?: string | null;
   viewCount: number;
   updatedAt: string;
+  introEndSec?: number | null;
+  creditsStartSec?: number | null;
 };
 
 export type CastMember = { name: string; slug?: string; role?: string };
@@ -201,6 +203,8 @@ export function mapEpisode(row: EpisodeRow, extras: Record<string, unknown> = {}
     playbackUrl,
     viewCount: row.viewCount,
     updatedAt: row.updatedAt,
+    introEndSec: row.introEndSec ?? null,
+    creditsStartSec: row.creditsStartSec ?? null,
     thumbsVttUrl,
     audioTracks:
       (extras.audioTracks as unknown[]) ??
