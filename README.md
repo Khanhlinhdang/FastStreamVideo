@@ -1,9 +1,19 @@
 ﻿# LiveStream
 
-Nền tảng xem phim/anime **local** — thương hiệu **LiveStream**.  
+Nền tảng xem phim/anime **self-host** — thương hiệu **LiveStream**.  
 API Fastify + SQLite + ffmpeg HLS, frontend React (Vite + hls.js).
 
-> Catalog demo là metadata giả + video mở (Blender). **Không** scrape nội dung bản quyền từ site khác.
+> Catalog demo dùng metadata giả + video mở (Blender / Google sample). **Không** scrape nội dung bản quyền.
+
+## Dùng thử nhanh
+
+| Cách | Lệnh | URL |
+|---|---|---|
+| **Local dev** | `npm run db:migrate && npm run db:seed-if-empty && npm run demo:encode && npm run dev` | http://localhost:5173 |
+| **Docker local (HTTP :8080)** | xem [Deploy — smoke local](#production-docker) | http://localhost:8080 |
+| **VPS production** | [`deploy.md`](./deploy.md) + `scripts/vps-bootstrap.sh` | `https://YOUR_DOMAIN` |
+
+Seed mặc định: **2 series** có tập demo encode được (Neon Harbor, Skyforge). Admin upload thêm nội dung thật qua `/admin/wizard`.
 
 ## Screenshots
 
@@ -50,19 +60,22 @@ Chi tiết tính năng: [`features.md`](./features.md).
 | File | Nội dung |
 |---|---|
 | [`features.md`](./features.md) | Toàn bộ tính năng đã xây |
-| [`deploy.md`](./deploy.md) | **Production (Docker)** + VPS / Cloudflare / Supabase |
+| [`deploy.md`](./deploy.md) | **Production (Docker)** + VPS / Cloudflare / smoke test |
+| [`docs/DEPLOY_TEST_RESULTS.md`](./docs/DEPLOY_TEST_RESULTS.md) | Kết quả verify deploy gần nhất |
 | [`docs/CLOUDFLARE.md`](./docs/CLOUDFLARE.md) | DNS, SSL Full (strict), cache HLS |
 | [`docs/SUPABASE.md`](./docs/SUPABASE.md) | Storage posters (optional) + Postgres roadmap |
-| [`docs/ADMIN.md`](./docs/ADMIN.md) | Tài khoản seed, route admin, pipeline upload→encode |
-| [`docs/PROJECT_AUDIT.md`](./docs/PROJECT_AUDIT.md) | Audit toàn diện (tính năng, P0–P2, lộ trình 30/60/90) |
+| [`docs/ADMIN.md`](./docs/ADMIN.md) | Tài khoản seed, route admin, upload→encode |
+| [`docs/STREAMING_RESEARCH_UPGRADE_PLAN.md`](./docs/STREAMING_RESEARCH_UPGRADE_PLAN.md) | Roadmap UX streaming (P0–P2) |
+| [`docs/PROJECT_AUDIT.md`](./docs/PROJECT_AUDIT.md) | Audit toàn diện |
 | [`web/README.md`](./web/README.md) | Ghi chú frontend ngắn |
 
 ## Stack
 
-- **Server:** Node 20+, Fastify 5, better-sqlite3, JWT + refresh cookie, multipart upload, encode queue (ffmpeg)
-- **Web:** React 19, Vite 8, React Router, hls.js (ABR)
-- **Media:** HLS VOD (fMP4, segment ~5s), ABR ladder 480p → 1080p (+1440/2160 nếu nguồn đủ cao)
+- **Server:** Node 20+, Fastify 5, better-sqlite3, JWT + refresh cookie, multipart / chunked upload, encode queue (ffmpeg)
+- **Web:** React 19, Vite 8, React Router, hls.js (ABR + slow-net defense)
+- **Media:** HLS VOD (fMP4, segment ~5s), ABR ladder 480p → 1080p
 - **DB / files:** SQLite (`data/livestream.db`), media dưới `media/` (uploads + hls)
+- **Prod:** Docker Compose — `api` + `web` + Caddy (+ optional `worker`)
 
 ## Architecture (HLS / ABR)
 
@@ -76,15 +89,14 @@ Upload / demo source
   media/hls/<episodeId>/master.m3u8
         │
         ▼
-  GET /media/...  →  HlsPlayer (hls.js)  →  ABR + MSE
+  Caddy /media/hls/* (file_server)  +  HlsPlayer (hls.js ABR)
 ```
-
-Player ưu tiên `episode.playbackUrl` từ API (thường `/media/hls/<id>/master.m3u8`).
 
 ## Requirements
 
-- Node.js **20+**, npm **10+**
-- **ffmpeg** / **ffprobe** — thứ tự resolve: biến `.env` → `PATH` hệ thống → package npm `@ffmpeg-installer` / `@ffprobe-installer`
+- Node.js **20+**, npm **10+** (local)
+- **ffmpeg** / **ffprobe** — `.env` → `PATH` → npm installer packages
+- **Docker Engine + Compose plugin** (production / smoke)
 
 ## Quick start (Windows PowerShell)
 
@@ -94,105 +106,108 @@ Copy-Item .env.example .env -ErrorAction SilentlyContinue
 npm install
 npm run db:migrate
 npm run db:seed-if-empty   # chỉ seed khi DB trống — KHÔNG xóa upload đã có
-# lần đầu (catalog demo): npm run db:seed
-npm run demo:encode   # một lần — tạo HLS demo dưới media/hls/
-npm run dev           # API :4000 + Web :5173
+npm run demo:encode        # tạo HLS demo (2 tập) — cần mạng lần đầu
+npm run dev                # API :4000 + Web :5173
 ```
 
-> **Persistence:** Upload được lưu vào SQLite `data/livestream.db` + file dưới `media/uploads` và `media/hls`.  
-> `npm run dev` / `start:local` **không** xóa catalog. Chỉ `npm run db:seed` hoặc `db:reset` mới wipe dữ liệu (file media trên đĩa có thể còn nhưng mất liên kết DB).
-
-Hai terminal riêng:
-
-```powershell
-npm run dev:server   # http://localhost:4000
-npm run dev:web      # http://localhost:5173 (proxy /api + /media → :4000)
-```
-
-Chỉ bootstrap API (migrate → seed → API, **không** encode demo):
-
-```powershell
-npm run start:local
-```
+> **Persistence:** Upload → SQLite `data/livestream.db` + `media/uploads` + `media/hls`.  
+> `npm run dev` **không** wipe. Chỉ `db:seed` / `db:reset` mới xóa catalog.
 
 | Surface | URL |
 |---|---|
 | Web UI | http://localhost:5173 |
 | API health | http://localhost:4000/api/health |
-| Static media | http://localhost:4000/media/... |
+| Admin | http://localhost:5173/admin (sau login) |
 
 ## Production (Docker)
 
-VPS + custom domain: see **[`deploy.md`](./deploy.md)** (`docker compose up`), plus [`docs/CLOUDFLARE.md`](./docs/CLOUDFLARE.md) and optional [`docs/SUPABASE.md`](./docs/SUPABASE.md).
+Hướng dẫn đầy đủ: **[`deploy.md`](./deploy.md)**.
+
+### Smoke local (không cần domain)
 
 ```bash
 cp .env.production.example .env.production
-# edit DOMAIN, JWT_*, SEED_ADMIN_*, CORS_ORIGIN
-docker compose --env-file .env.production up -d --build
+# DOMAIN=localhost
+# CORS_ORIGIN=http://localhost:8080
+# COOKIE_SECURE=false
+# JWT_* = openssl rand -hex 32 (không dùng change-me-access-secret-dev-only)
+# SEED_ADMIN_PASSWORD=... mạnh
+# AUTO_DEMO_ENCODE=1   # encode 2 tập demo lúc boot (vài phút)
+
+docker compose -f docker-compose.yml -f docker-compose.local.yml --env-file .env.production up -d --build
+# chờ healthy rồi:
+#   bash scripts/ci-docker-smoke.sh
+#   # hoặc PowerShell:
+#   .\scripts\docker-smoke.ps1 -AdminPassword '...' -WaitHlsSec 600
 ```
 
-Day-1: SQLite + media volumes behind Caddy. Supabase keys optional (poster Storage only until Phase B Postgres).
+Mở http://localhost:8080 — đăng nhập admin trong `.env.production`.
+
+### VPS (domain + HTTPS)
+
+```bash
+git clone <repo> LiveStream && cd LiveStream
+cp .env.production.example .env.production
+# DOMAIN=livestream.example.com
+# CORS_ORIGIN=https://livestream.example.com
+# JWT_* + SEED_ADMIN_* (bắt buộc đổi)
+chmod +x scripts/vps-bootstrap.sh
+./scripts/vps-bootstrap.sh
+```
 
 ## Demo HLS
 
-`npm run demo:encode` tải sample open-movie (fallback `test-video.mp4` nếu CDN chặn), encode HLS, đánh dấu tập seed **ready**.
+- Local: `npm run demo:encode` (fast 480p) hoặc `$env:DEMO_FULL=1; npm run demo:encode`
+- Docker first boot: `AUTO_DEMO_ENCODE=1` chạy `bootstrap-demo-hls` (không wipe DB)
+- Sau seed mới: Neon Harbor = ep **1**, Skyforge = ep **2**
 
-- Mặc định **fast mode** (480p, ~45s đầu) — chỉ để bootstrap nhanh; **không** dùng để đánh giá chất lượng sản phẩm.
-- Full ladder (khuyến nghị khi demo xem chất lượng): `$env:DEMO_FULL=1; npm run demo:encode` → master có **480/720/1080**.
-- Kiểm tra ladder mỏng: `node scripts/ensure-demo-ladder.mjs`
-- Encode dùng **CRF + maxrate** (không còn CBR cứng); ladder cap theo chiều cao nguồn + heuristic bitrate nhẹ (`selectLadderForTitle`).
-
-Sau khi encode thành công (ID tập seed ổn định):
-
-| Series | Tập | Playback |
-|---|---|---|
-| Neon Harbor Chronicles | Ep 1 | `/media/hls/1/master.m3u8` |
-| Skyforge Academy | Ep 1 | `/media/hls/5/master.m3u8` |
-
-Kiểm tra: `GET /api/series/neon-harbor-chronicles` → `episodes[0].statusEncode === "ready"`.
+| Series | Playback |
+|---|---|
+| Neon Harbor Chronicles | `/xem/neon-harbor-chronicles/1` |
+| Skyforge Academy | `/xem/skyforge-academy/1` |
 
 ## Tài khoản & admin
 
-Seed credentials và quy trình upload/encode nằm trong **[`docs/ADMIN.md`](./docs/ADMIN.md)** (mật khẩu mặc định chỉ dùng local/dev — đổi trước khi deploy thật).
+Xem **[`docs/ADMIN.md`](./docs/ADMIN.md)**. Mặc định local: `admin@livestream.local` / `admin123` — **đổi trước khi mở VPS**.
+
+Admin routes: `/admin`, `/admin/wizard`, `/admin/series`, `/admin/episodes`, …
 
 ## Scripts (repo root)
 
 | Command | Mô tả |
 |---|---|
 | `npm run dev` | API + Web cùng lúc |
-| `npm run dev:server` | API hot reload (`tsx watch`) |
-| `npm run dev:web` | Vite web `:5173` |
-| `npm run db:migrate` | Áp schema SQLite |
-| `npm run db:seed` | Seed genres / series / users (**xóa catalog cũ**) |
-| `npm run db:seed-if-empty` | Seed chỉ khi chưa có user |
-| `npm run db:reset` | Seed lại toàn bộ (destructive) |
-| `npm run demo:encode` | Tải + encode open movies |
-| `npm run start:local` | migrate → seed-if-empty → API |
-| `npm run build` | Build server + web |
-| `npm run start` | Chạy API đã build (`server/dist`) |
+| `npm run db:migrate` | Schema SQLite |
+| `npm run db:seed-if-empty` | Seed khi chưa có user |
+| `npm run db:seed` | Seed lại (**xóa catalog**) |
+| `npm run demo:encode` | Tải + encode open movies (có reseeds) |
+| `npm run build` / `npm run start` | Build & chạy API production-style |
+| `scripts/ci-docker-smoke.sh` | Smoke HTTP stack |
+| `scripts/docker-smoke.ps1` | Smoke trên Windows |
+| `scripts/vps-bootstrap.sh` | Compose up trên VPS |
 
 ## Env
 
-Xem [`.env.example`](./.env.example). Các key chính: `PORT`, `DATABASE_PATH`, `MEDIA_ROOT`, `JWT_*`, `CORS_ORIGIN`, `FFMPEG_PATH`, `FFPROBE_PATH`, `SEED_ADMIN_*`.
+- Local: [`.env.example`](./.env.example)
+- Docker: [`.env.production.example`](./.env.production.example) → `.env.production`
 
 ## Layout
 
 ```text
 StreamSqueeze/
-  server/     # Fastify + TypeScript + SQLite + encode queue
-  web/        # React UI (Vite + hls.js)
+  server/     # Fastify + SQLite + encode
+  web/        # React (Vite + hls.js)
+  deploy/     # Caddyfile, nginx-web.conf
   media/      # uploads + hls (gitignored)
   data/       # SQLite (gitignored)
-  scripts/    # dev / start-local helpers
-  docs/       # ADMIN và ops
+  scripts/    # dev / docker smoke / vps bootstrap
+  docs/       # ops & plans
 ```
 
 ## API (tóm tắt)
 
-**Public:** `GET /api/home`, `/api/series`, `/api/series/:slug`, `/api/series/:slug/episodes`, `/api/genres`, `/api/search`, `/api/schedule`, `/api/ranking`, `/api/completed`, `/api/episodes/:id/comments`
+**Public:** `GET /api/home`, `/api/series`, `/api/series/:slug/episodes`, `/api/search`, `/api/schedule`, …
 
-**Auth:** `POST /api/auth/register|login|logout|refresh`, `GET /api/me`, favorites + history dưới `/api/me/*`
+**Auth:** `POST /api/auth/login|register|refresh`, `/api/me/*`
 
-**Admin** (Bearer access JWT, role `admin`): CRUD `/api/admin/series|episodes|genres|schedule`, `POST /api/admin/episodes/:id/upload`, `GET /api/admin/jobs/:id`
-
-Auth: access JWT ngắn hạn + cookie httpOnly `refreshToken`.
+**Admin:** CRUD series/episodes, chunked upload, jobs, wizard metadata — Bearer JWT (`admin` \| `editor`)

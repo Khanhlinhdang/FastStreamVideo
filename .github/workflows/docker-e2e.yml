@@ -41,10 +41,13 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file .env.ci logs --tail=80
           exit 1
 
-      - name: Smoke curl health + home + media
+      - name: Smoke curl health + home + login + media
         run: |
           chmod +x scripts/ci-docker-smoke.sh
-          BASE_URL=http://127.0.0.1:8080 ./scripts/ci-docker-smoke.sh
+          BASE_URL=http://127.0.0.1:8080 \
+          ADMIN_EMAIL=admin@livestream.local \
+          ADMIN_PASSWORD=ci-admin-pass-change-me \
+          ./scripts/ci-docker-smoke.sh
 
       - name: Tear down
         if: always()

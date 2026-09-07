@@ -1,0 +1,27 @@
+# HTTP-only overlay for local smoke / CI (no Let's Encrypt).
+# Usage:
+#   cp .env.production.example .env.production
+#   # set DOMAIN=localhost CORS_ORIGIN=http://localhost COOKIE_SECURE=false + strong JWT_*
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml --env-file .env.production up -d --build
+#   # or CI:
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file .env.ci up -d --build
+
+services:
+  api:
+    environment:
+      COOKIE_SECURE: "false"
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      AUTO_DEMO_ENCODE: ${AUTO_DEMO_ENCODE:-1}
+
+  proxy:
+    # Compose v5: !reset can drop the replacement list; !override replaces base ports.
+    ports: !override
+      - "${LOCAL_HTTP_PORT:-8080}:80"
+    environment:
+      DOMAIN: localhost
+    volumes:
+      - ./deploy/Caddyfile.ci:/etc/caddy/Caddyfile:ro
+      - livestream_media:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config

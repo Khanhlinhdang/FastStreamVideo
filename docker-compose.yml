@@ -20,8 +20,8 @@ services:
       MEDIA_ROOT: /media
       UPLOADS_DIR: /media/uploads
       HLS_DIR: /media/hls
-      FFMPEG_PATH: ffmpeg
-      FFPROBE_PATH: ffprobe
+      FFMPEG_PATH: /usr/local/bin/ffmpeg
+      FFPROBE_PATH: /usr/local/bin/ffprobe
       REPO_ROOT: /app
       CORS_ORIGIN: ${CORS_ORIGIN}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
@@ -32,15 +32,24 @@ services:
       MAX_ENCODE_HEIGHT: ${MAX_ENCODE_HEIGHT:-1080}
       R2_PUBLISH_MODE: ${R2_PUBLISH_MODE:-off}
       SIGNED_MEDIA: ${SIGNED_MEDIA:-0}
+      AUTO_DEMO_ENCODE: ${AUTO_DEMO_ENCODE:-1}
+      DEMO_FULL: ${DEMO_FULL:-0}
     volumes:
       - livestream_data:/data
       - livestream_media:/media
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      # First boot may download + encode demo clips (AUTO_DEMO_ENCODE=1)
+      start_period: 600s
     networks:
       - livestream
 
@@ -108,8 +117,8 @@ services:
       MEDIA_ROOT: /media
       UPLOADS_DIR: /media/uploads
       HLS_DIR: /media/hls
-      FFMPEG_PATH: ffmpeg
-      FFPROBE_PATH: ffprobe
+      FFMPEG_PATH: /usr/local/bin/ffmpeg
+      FFPROBE_PATH: /usr/local/bin/ffprobe
       REPO_ROOT: /app
       ENCODE_IN_PROCESS: "1"
       # Inherit R2_* from env_file so worker can publish after encode

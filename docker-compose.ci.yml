@@ -14,7 +14,7 @@ services:
       PORT: 4000
       COOKIE_SECURE: "false"
       TRUST_PROXY: "true"
-      CORS_ORIGIN: http://localhost
+      CORS_ORIGIN: http://localhost:8080
       JWT_ACCESS_SECRET: ci-access-secret-not-for-production-32b
       JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production-32b
       SEED_ADMIN_EMAIL: admin@livestream.local
@@ -25,9 +25,13 @@ services:
       ENABLE_AV1_LADDER: "0"
       SIGNED_MEDIA: "0"
       ENCODE_IN_PROCESS: "1"
+      # CI smoke skips long encode; set AUTO_DEMO_ENCODE=1 for full trial path
+      AUTO_DEMO_ENCODE: ${AUTO_DEMO_ENCODE:-0}
+    healthcheck:
+      start_period: 90s
 
   proxy:
-    ports:
+    ports: !override
       - "8080:80"
     environment:
       DOMAIN: localhost
