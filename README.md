@@ -5,6 +5,46 @@ API Fastify + SQLite + ffmpeg HLS, frontend React (Vite + hls.js).
 
 > Catalog demo là metadata giả + video mở (Blender). **Không** scrape nội dung bản quyền từ site khác.
 
+## Screenshots
+
+### Trang chủ — catalog & discovery
+
+![Trang chủ LiveStream](docs/screenshots/01-home.jpg)
+
+### Chi tiết phim — metadata, tập, cùng thể loại
+
+![Chi tiết series](docs/screenshots/02-series-detail.jpg)
+
+### Player HLS — chất lượng ABR, Theater, PiP, Equalizer
+
+![Trang xem phim](docs/screenshots/03-watch-player.jpg)
+
+### Tìm kiếm — lọc thể loại, loại, năm, quốc gia, trạng thái
+
+![Tìm kiếm](docs/screenshots/04-search.jpg)
+
+### Bảng xếp hạng
+
+![Bảng xếp hạng](docs/screenshots/05-ranking.jpg)
+
+### Lịch chiếu theo ngày trong tuần
+
+![Lịch chiếu](docs/screenshots/06-schedule.jpg)
+
+### Đăng nhập / tài khoản
+
+![Đăng nhập](docs/screenshots/07-login.jpg)
+
+### Admin — tổng quan encode, disk, QoE
+
+![Admin dashboard](docs/screenshots/08-admin.jpg)
+
+### Admin — quản lý series / catalog CMS
+
+![Admin series](docs/screenshots/09-admin-series.jpg)
+
+Chi tiết tính năng: [`features.md`](./features.md).
+
 ## Tài liệu
 
 | File | Nội dung |
